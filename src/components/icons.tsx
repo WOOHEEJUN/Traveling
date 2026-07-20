@@ -129,6 +129,25 @@ export function ArrowLeftIcon(props: IconProps) {
   );
 }
 
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function RouteOptimizeIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <circle cx="5.5" cy="18.5" r="2" />
+      <circle cx="18.5" cy="5.5" r="2" />
+      <path d="M7.5 18.5h6a3 3 0 0 0 0-6h-3a3 3 0 0 1 0-6h5" />
+      <path d="m16.5 3.5 2 2-2 2" />
+    </svg>
+  );
+}
+
 export function HeartIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

@@ -77,6 +77,31 @@ export async function searchPlace(keyword: string): Promise<KakaoPlace | null> {
   };
 }
 
+/**
+ * 키워드로 장소 여러 건 검색.
+ * 사용자가 "성심당"을 검색하면 본점/DCC점/롯데점 중에 고를 수 있어야 해서
+ * 단건 검색과 별도로 둡니다.
+ */
+export async function searchPlaceList(
+  keyword: string,
+  size = 10,
+): Promise<KakaoPlace[]> {
+  const data = await kakaoFetch("/local/search/keyword.json", {
+    query: keyword,
+    size: String(Math.min(Math.max(size, 1), 15)),
+  });
+
+  const docs: KakaoKeywordDoc[] = data?.documents ?? [];
+  return docs.map((doc) => ({
+    name: doc.place_name,
+    address: doc.road_address_name || doc.address_name || null,
+    lat: Number(doc.y),
+    lng: Number(doc.x),
+    placeUrl: doc.place_url || null,
+    category: doc.category_group_name || null,
+  }));
+}
+
 /** 여러 키워드를 한 번에 검색 (실패한 건 null) */
 export async function searchPlaces(
   keywords: string[],

@@ -3,34 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import KakaoMap from "./KakaoMap";
-import { PLACE_TYPES } from "@/lib/types";
+import PlanDayList, { type PlanDayData } from "./PlanDayList";
+import PlaceSearchSheet, { type SearchedPlace } from "./PlaceSearchSheet";
+import type { PlanItemData } from "./SortablePlanItem";
 import { tripStyleLabel } from "@/lib/types";
-import { nightsLabel } from "@/lib/distance";
+import { formatDriveTime, nightsLabel } from "@/lib/distance";
 import { PLAN_STATUS_STYLE, planStatusLabel } from "@/lib/plan";
-import { photoSrc } from "@/lib/photo";
-import {
-  BedIcon,
-  CakeIcon,
-  CheckIcon,
-  CompassIcon,
-  ForkKnifeIcon,
-  TrashIcon,
-} from "./icons";
+import { CheckIcon, RouteOptimizeIcon, TrashIcon } from "./icons";
 
-export interface PlanDetailItem {
-  id: string;
-  sortOrder: number;
-  type: string;
-  name: string;
-  address: string | null;
-  lat: number | null;
-  lng: number | null;
-  kakaoPlaceUrl: string | null;
-  photoUrl: string | null;
-  note: string | null;
-  priceLevel: string | null;
-  visitTime: string | null;
-}
+export type { PlanItemData };
 
 export interface PlanDetailData {
   id: string;
@@ -46,28 +27,8 @@ export interface PlanDetailData {
   rating: number | null;
   review: string | null;
   savedByName: string;
-  days: {
-    id: string;
-    dayNumber: number;
-    title: string | null;
-    memo: string | null;
-    items: PlanDetailItem[];
-  }[];
+  days: PlanDayData[];
 }
-
-const TYPE_ICON: Record<string, typeof BedIcon> = {
-  stay: BedIcon,
-  food: ForkKnifeIcon,
-  dessert: CakeIcon,
-  activity: CompassIcon,
-};
-
-const TYPE_TINT: Record<string, string> = {
-  stay: "bg-tint-lavender text-cat-stay",
-  food: "bg-tint-peach text-cat-food",
-  dessert: "bg-tint-rose text-cat-dessert",
-  activity: "bg-tint-mint text-cat-activity",
-};
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -77,14 +38,20 @@ function formatDate(iso: string) {
 export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
-  const [memo, setMemo] = useState(plan.memo ?? "");
-  const [memoSaved, setMemoSaved] = useState<"idle" | "saving" | "saved">("idle");
+  const [editing, setEditing] = useState(false);
+  const [days, setDays] = useState<PlanDayData[]>(plan.days);
   const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [memo, setMemo] = useState(plan.memo ?? "");
+  const [memoState, setMemoState] = useState<"idle" | "saving" | "saved">("idle");
+  const [addingToDay, setAddingToDay] = useState<string | null>(null);
+  /** 순서가 바뀐 뒤에만 최적화 제안을 띄웁니다 */
+  const [suggestOptimize, setSuggestOptimize] = useState(false);
+  const [optimizeMsg, setOptimizeMsg] = useState<string | null>(null);
 
   const style = PLAN_STATUS_STYLE[plan.status] ?? PLAN_STATUS_STYLE.saved;
-  const allItems = plan.days.flatMap((d) => d.items);
+  const allItems = days.flatMap((d) => d.items);
 
-  async function patch(body: Record<string, unknown>) {
+  async function patchPlan(body: Record<string, unknown>) {
     setBusy(true);
     try {
       const res = await fetch(`/api/plans/${plan.id}`, {
@@ -101,10 +68,129 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
 
   async function saveMemo() {
     if (memo === (plan.memo ?? "")) return;
-    setMemoSaved("saving");
-    const ok = await patch({ memo });
-    setMemoSaved(ok ? "saved" : "idle");
-    if (ok) setTimeout(() => setMemoSaved("idle"), 2000);
+    setMemoState("saving");
+    const ok = await patchPlan({ memo });
+    setMemoState(ok ? "saved" : "idle");
+    if (ok) setTimeout(() => setMemoState("idle"), 2000);
+  }
+
+  /** 드래그로 순서가 바뀌면 화면을 먼저 갱신하고 서버에 반영 */
+  async function handleReorder(dayId: string, items: PlanItemData[]) {
+    const next = days.map((d) => (d.id === dayId ? { ...d, items } : d));
+    setDays(next);
+    setSuggestOptimize(true);
+    setOptimizeMsg(null);
+
+    await fetch(`/api/plans/${plan.id}/items`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: items.map((it, i) => ({ id: it.id, dayId, sortOrder: i })),
+      }),
+    });
+    router.refresh();
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    setDays((prev) =>
+      prev.map((d) => ({ ...d, items: d.items.filter((i) => i.id !== itemId) })),
+    );
+    await fetch(`/api/plans/${plan.id}/items/${itemId}`, { method: "DELETE" });
+    setSuggestOptimize(true);
+    router.refresh();
+  }
+
+  async function handleUpdateItem(
+    itemId: string,
+    patch: { visitTime?: string; note?: string },
+  ) {
+    setDays((prev) =>
+      prev.map((d) => ({
+        ...d,
+        items: d.items.map((i) => (i.id === itemId ? { ...i, ...patch } : i)),
+      })),
+    );
+    await fetch(`/api/plans/${plan.id}/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    router.refresh();
+  }
+
+  async function handleAddPlace(place: SearchedPlace, type: string) {
+    if (!addingToDay) return;
+    const res = await fetch(`/api/plans/${plan.id}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dayId: addingToDay,
+        type,
+        name: place.name,
+        address: place.address,
+        lat: place.lat,
+        lng: place.lng,
+        kakaoPlaceUrl: place.placeUrl,
+        photoUrl: place.photoUrl,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setDays((prev) =>
+        prev.map((d) =>
+          d.id === addingToDay
+            ? {
+                ...d,
+                items: [
+                  ...d.items,
+                  {
+                    id: data.itemId,
+                    sortOrder: d.items.length,
+                    type,
+                    name: place.name,
+                    address: place.address,
+                    lat: place.lat,
+                    lng: place.lng,
+                    kakaoPlaceUrl: place.placeUrl,
+                    photoUrl: place.photoUrl,
+                    note: null,
+                    priceLevel: null,
+                    visitTime: null,
+                  },
+                ],
+              }
+            : d,
+        ),
+      );
+      setSuggestOptimize(true);
+      setOptimizeMsg(null);
+      router.refresh();
+    }
+  }
+
+  async function handleOptimize() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/plans/${plan.id}/optimize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSuggestOptimize(false);
+        setOptimizeMsg(
+          data.savedMinutes > 0
+            ? `이동시간을 ${formatDriveTime(data.savedMinutes)} 줄였어요.`
+            : data.reordered
+              ? "끼니 시간에 맞춰 순서를 정리했어요."
+              : "지금 순서가 이미 괜찮아요. 방문 시간만 다시 계산했어요.",
+        );
+        router.refresh();
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleDelete() {
@@ -121,7 +207,6 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
 
   return (
     <div className="space-y-4">
-      {/* 헤더 */}
       <section className="card">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-[20px] font-semibold tracking-tight text-ink">
@@ -138,12 +223,11 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
         </p>
         <p className="mt-1 text-[12px] text-stone">저장: {plan.savedByName}</p>
 
-        {/* 상태 전환 버튼 */}
         <div className="mt-4 flex flex-wrap gap-2">
           {plan.status === "saved" && (
             <button
               type="button"
-              onClick={() => patch({ status: "upcoming" })}
+              onClick={() => patchPlan({ status: "upcoming" })}
               disabled={busy}
               className="btn btn-primary flex-1"
             >
@@ -155,7 +239,7 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
             <>
               <button
                 type="button"
-                onClick={() => patch({ status: "completed" })}
+                onClick={() => patchPlan({ status: "completed" })}
                 disabled={busy}
                 className="btn btn-primary flex-1"
               >
@@ -164,7 +248,7 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
               </button>
               <button
                 type="button"
-                onClick={() => patch({ status: "saved" })}
+                onClick={() => patchPlan({ status: "saved" })}
                 disabled={busy}
                 className="btn btn-secondary"
               >
@@ -175,7 +259,7 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
           {plan.status === "completed" && (
             <button
               type="button"
-              onClick={() => patch({ status: "upcoming" })}
+              onClick={() => patchPlan({ status: "upcoming" })}
               disabled={busy}
               className="btn btn-secondary flex-1"
             >
@@ -185,7 +269,6 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
         </div>
       </section>
 
-      {/* 지도 */}
       {allItems.some((i) => i.lat !== null) && (
         <section className="overflow-hidden rounded-lg border border-hairline bg-canvas">
           <div className="h-[260px] w-full sm:h-[320px]">
@@ -208,112 +291,104 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
         </section>
       )}
 
-      {/* 일자별 일정 */}
-      {plan.days.map((day) => (
-        <section key={day.id} className="card">
-          <div className="mb-3 flex items-baseline gap-2">
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-semibold text-on-dark">
-              {day.dayNumber}
-            </span>
-            <h2 className="text-[15px] font-semibold text-ink">
-              {day.title ?? `${day.dayNumber}일차`}
-            </h2>
+      {/* 일정 편집 전환 */}
+      <div className="flex items-center justify-between px-1">
+        <h2 className="text-[15px] font-semibold text-ink">일정</h2>
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          className={`rounded-md px-3 py-2 text-[13px] font-medium ${
+            editing ? "bg-ink text-on-dark" : "border border-hairline text-slate"
+          }`}
+        >
+          {editing ? "편집 끝내기" : "일정 편집"}
+        </button>
+      </div>
+
+      {editing && (
+        <p className="px-1 text-[12px] leading-relaxed text-stone">
+          카드를 꾹 눌러서 순서를 바꾸고, 시간과 메모를 입력할 수 있어요. 바뀐
+          내용은 바로 저장됩니다.
+        </p>
+      )}
+
+      {/* 동선 최적화 제안 — 사용자가 누를 때만 계산 */}
+      {suggestOptimize && (
+        <div className="rounded-lg border border-plan-upcoming bg-plan-upcoming-soft p-4">
+          <p className="text-[13px] font-medium text-ink">
+            일정이 바뀌었어요. 이동 동선을 다시 정리할까요?
+          </p>
+          <p className="mt-1 text-[12px] text-slate">
+            가까운 곳끼리 묶고 끼니를 식사시간에 맞춰 순서를 다시 잡습니다.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={handleOptimize}
+              disabled={busy}
+              className="btn btn-primary flex-1"
+            >
+              <RouteOptimizeIcon width={16} height={16} />
+              최적화하기
+            </button>
+            <button
+              type="button"
+              onClick={() => setSuggestOptimize(false)}
+              className="btn btn-secondary flex-1"
+            >
+              나중에
+            </button>
           </div>
+        </div>
+      )}
 
-          {day.memo && (
-            <p className="mb-3 rounded-md bg-surface-soft p-3 text-[13px] leading-relaxed text-slate">
-              {day.memo}
-            </p>
-          )}
+      {optimizeMsg && (
+        <p className="rounded-md bg-surface px-4 py-3 text-[13px] text-slate">
+          {optimizeMsg}
+        </p>
+      )}
 
-          {day.items.length === 0 ? (
-            <p className="text-[13px] text-stone">아직 등록된 장소가 없어요.</p>
-          ) : (
-            <ul className="space-y-2">
-              {day.items.map((item) => {
-                const Icon = TYPE_ICON[item.type] ?? CompassIcon;
-                const typeLabel =
-                  PLACE_TYPES.find((t) => t.key === item.type)?.label ?? "";
-                return (
-                  <li
-                    key={item.id}
-                    onMouseEnter={() => setFocusedId(item.id)}
-                    className={`rounded-md border p-3 transition-colors ${
-                      focusedId === item.id
-                        ? "border-primary bg-primary-soft/40"
-                        : "border-hairline-soft bg-surface-soft"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      {item.photoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={photoSrc(item.photoUrl)!}
-                          alt=""
-                          loading="lazy"
-                          className="h-14 w-14 shrink-0 rounded-md bg-surface object-cover"
-                        />
-                      ) : (
-                        <span
-                          className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-md ${
-                            TYPE_TINT[item.type] ?? "bg-surface text-stone"
-                          }`}
-                        >
-                          <Icon width={20} height={20} />
-                        </span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="flex flex-wrap items-center gap-1.5">
-                          {item.visitTime && (
-                            <span className="text-[12px] font-semibold text-primary-deep">
-                              {item.visitTime}
-                            </span>
-                          )}
-                          <span className="text-[14px] font-medium text-ink">
-                            {item.name}
-                          </span>
-                          <span className={`tag ${TYPE_TINT[item.type]}`}>
-                            {typeLabel}
-                          </span>
-                        </p>
-                        {item.address && (
-                          <p className="mt-0.5 text-[12px] text-stone">
-                            {item.address}
-                          </p>
-                        )}
-                        {item.note && (
-                          <p className="mt-1.5 text-[13px] leading-relaxed text-slate">
-                            {item.note}
-                          </p>
-                        )}
-                      </div>
-                      {item.kakaoPlaceUrl && (
-                        <a
-                          href={item.kakaoPlaceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 rounded-md border border-hairline bg-canvas px-2.5 py-1.5 text-[12px] font-medium text-slate"
-                        >
-                          지도
-                        </a>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-      ))}
+      <PlanDayList
+        days={days}
+        editing={editing}
+        focusedId={focusedId}
+        onFocus={setFocusedId}
+        onReorder={handleReorder}
+        onDelete={handleDeleteItem}
+        onUpdateItem={handleUpdateItem}
+        onAddPlace={setAddingToDay}
+        onUpdateDayMemo={async (dayId, dayMemo) => {
+          setDays((prev) =>
+            prev.map((d) => (d.id === dayId ? { ...d, memo: dayMemo } : d)),
+          );
+          await fetch(`/api/plans/${plan.id}/days/${dayId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ memo: dayMemo }),
+          });
+          router.refresh();
+        }}
+      />
 
-      {/* 메모 */}
+      {!editing && (
+        <button
+          type="button"
+          onClick={handleOptimize}
+          disabled={busy || allItems.length < 2}
+          className="btn btn-secondary w-full"
+        >
+          <RouteOptimizeIcon width={16} height={16} />
+          이동 동선 정리하기
+        </button>
+      )}
+
       <section className="card">
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold text-ink">메모</h2>
-          {memoSaved === "saving" && (
+          {memoState === "saving" && (
             <span className="text-[12px] text-stone">저장 중...</span>
           )}
-          {memoSaved === "saved" && (
+          {memoState === "saved" && (
             <span className="text-[12px] text-success">저장됨</span>
           )}
         </div>
@@ -327,9 +402,8 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
         />
       </section>
 
-      {/* 다녀온 뒤 기록 */}
       {plan.status === "completed" && (
-        <PlanReview plan={plan} onPatch={patch} busy={busy} />
+        <PlanReview plan={plan} onPatch={patchPlan} busy={busy} />
       )}
 
       <button
@@ -341,6 +415,13 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
         <TrashIcon width={16} height={16} />
         이 여행 삭제
       </button>
+
+      {addingToDay && (
+        <PlaceSearchSheet
+          onClose={() => setAddingToDay(null)}
+          onAdd={handleAddPlace}
+        />
+      )}
     </div>
   );
 }
@@ -380,7 +461,9 @@ function PlanReview({
                   height="26"
                   viewBox="0 0 24 24"
                   fill={on ? "var(--color-primary)" : "none"}
-                  stroke={on ? "var(--color-primary)" : "var(--color-hairline-strong)"}
+                  stroke={
+                    on ? "var(--color-primary)" : "var(--color-hairline-strong)"
+                  }
                   strokeWidth="1.5"
                   strokeLinejoin="round"
                 >
