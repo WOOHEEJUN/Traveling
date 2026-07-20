@@ -61,6 +61,7 @@ model Place {
   lat          Float?
   lng          Float?
   kakaoPlaceUrl String?
+  photoUrl     String? // 카카오 이미지 검색 썸네일
   note         String? // 플래너의 코멘트
   priceLevel   String? // 가성비/보통/프리미엄
 }

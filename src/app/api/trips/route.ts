@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import { planTrip } from "@/lib/claude";
-import { searchPlace, searchPlaces } from "@/lib/kakao";
+import { searchPhotos, searchPlace, searchPlaces } from "@/lib/kakao";
 import {
   DEFAULT_ORIGIN,
   ORIGIN_PRESETS,
@@ -131,7 +131,11 @@ export async function POST(request: Request) {
       },
     });
 
-    const found = await searchPlaces(option.places.map((p) => p.searchKeyword));
+    const keywords = option.places.map((p) => p.searchKeyword);
+    const [found, photos] = await Promise.all([
+      searchPlaces(keywords),
+      searchPhotos(keywords),
+    ]);
 
     await prisma.place.createMany({
       data: option.places.map((p, i) => {
@@ -144,6 +148,7 @@ export async function POST(request: Request) {
           lat: hit?.lat ?? null,
           lng: hit?.lng ?? null,
           kakaoPlaceUrl: hit?.placeUrl ?? null,
+          photoUrl: photos[i],
           note: p.note,
           priceLevel: p.priceLevel,
         };

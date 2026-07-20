@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PLACE_TYPES } from "@/lib/types";
+import { photoSrc } from "@/lib/photo";
 
 export interface MapPlace {
   id: string;
@@ -9,6 +10,10 @@ export interface MapPlace {
   name: string;
   lat: number | null;
   lng: number | null;
+  note?: string | null;
+  photoUrl?: string | null;
+  kakaoPlaceUrl?: string | null;
+  priceLevel?: string | null;
 }
 
 /** 지도에 실제로 찍을 수 있는 (좌표가 있는) 장소 */
@@ -39,6 +44,11 @@ interface KakaoMapInstance {
   ): void;
   panTo(latlng: KakaoLatLng): void;
 }
+interface KakaoCustomOverlay {
+  setMap(map: KakaoMapInstance | null): void;
+  setPosition(latlng: KakaoLatLng): void;
+  setContent(content: HTMLElement | string): void;
+}
 interface KakaoBounds {
   extend(latlng: KakaoLatLng): void;
 }
@@ -62,10 +72,21 @@ interface KakaoNamespace {
       size: object,
       options: { offset: object },
     ) => object;
+    CustomOverlay: new (options: {
+      position: KakaoLatLng;
+      content: HTMLElement | string;
+      yAnchor?: number;
+      xAnchor?: number;
+      zIndex?: number;
+    }) => KakaoCustomOverlay;
     Size: new (w: number, h: number) => object;
     Point: new (x: number, y: number) => object;
     event: {
-      addListener(target: KakaoMarker, type: string, cb: () => void): void;
+      addListener(
+        target: KakaoMarker | KakaoMapInstance,
+        type: string,
+        cb: () => void,
+      ): void;
     };
   };
 }
@@ -125,6 +146,94 @@ function isMappable(p: MapPlace): p is MappablePlace {
   return typeof p.lat === "number" && typeof p.lng === "number";
 }
 
+/** 마커를 눌렀을 때 뜨는 말풍선. DOM으로 만들어야 XSS 걱정 없이 안전합니다. */
+function buildPopup(
+  place: MappablePlace,
+  typeLabel: string,
+  color: string,
+  onClose: () => void,
+): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "map-popup";
+
+  const card = document.createElement("div");
+  card.className = "map-popup-card";
+
+  const photo = photoSrc(place.photoUrl);
+  if (photo) {
+    const img = document.createElement("img");
+    img.src = photo;
+    img.alt = "";
+    img.className = "map-popup-photo";
+    // 사진이 깨지면 영역만 차지하지 않도록 제거
+    img.onerror = () => img.remove();
+    card.appendChild(img);
+  }
+
+  const body = document.createElement("div");
+  body.className = "map-popup-body";
+
+  const head = document.createElement("div");
+  head.className = "map-popup-head";
+
+  const badge = document.createElement("span");
+  badge.className = "map-popup-badge";
+  badge.style.backgroundColor = color;
+  badge.textContent = typeLabel;
+  head.appendChild(badge);
+
+  if (place.priceLevel) {
+    const price = document.createElement("span");
+    price.className = "map-popup-price";
+    price.textContent = place.priceLevel;
+    head.appendChild(price);
+  }
+  body.appendChild(head);
+
+  const name = document.createElement("p");
+  name.className = "map-popup-name";
+  name.textContent = place.name;
+  body.appendChild(name);
+
+  if (place.note) {
+    const note = document.createElement("p");
+    note.className = "map-popup-note";
+    note.textContent = place.note;
+    body.appendChild(note);
+  }
+
+  if (place.kakaoPlaceUrl) {
+    const link = document.createElement("a");
+    link.href = place.kakaoPlaceUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.className = "map-popup-link";
+    link.textContent = "카카오맵에서 보기";
+    body.appendChild(link);
+  }
+
+  card.appendChild(body);
+
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "map-popup-close";
+  close.setAttribute("aria-label", "닫기");
+  close.textContent = "×";
+  close.onclick = (e) => {
+    e.stopPropagation();
+    onClose();
+  };
+  card.appendChild(close);
+
+  el.appendChild(card);
+
+  const tail = document.createElement("div");
+  tail.className = "map-popup-tail";
+  el.appendChild(tail);
+
+  return el;
+}
+
 interface Props {
   places: MapPlace[];
   /** 선택된 장소 id — 지정되면 해당 마커로 이동 */
@@ -136,6 +245,7 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMapInstance | null>(null);
   const markersRef = useRef<Map<string, KakaoMarker>>(new Map());
+  const overlayRef = useRef<KakaoCustomOverlay | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const appKey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
@@ -159,28 +269,47 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
 
         const bounds = new kakao.maps.LatLngBounds();
 
+        const closePopup = () => {
+          overlayRef.current?.setMap(null);
+          overlayRef.current = null;
+        };
+
         for (const place of mappable) {
           const pos = new kakao.maps.LatLng(place.lat, place.lng);
           bounds.extend(pos);
 
+          const color = MARKER_COLORS[place.type] ?? "#ff6b6b";
           const marker = new kakao.maps.Marker({
             map,
             position: pos,
             title: place.name,
             image: new kakao.maps.MarkerImage(
-              markerSvg(MARKER_COLORS[place.type] ?? "#ff6b6b"),
+              markerSvg(color),
               new kakao.maps.Size(26, 34),
               { offset: new kakao.maps.Point(13, 34) },
             ),
           });
 
-          if (onSelect) {
-            kakao.maps.event.addListener(marker, "click", () =>
-              onSelect(place.id),
-            );
-          }
+          kakao.maps.event.addListener(marker, "click", () => {
+            closePopup();
+            const typeLabel =
+              PLACE_TYPES.find((t) => t.key === place.type)?.label ?? "";
+            const overlay = new kakao.maps.CustomOverlay({
+              position: pos,
+              content: buildPopup(place, typeLabel, color, closePopup),
+              yAnchor: 1.28, // 마커 위쪽에 뜨도록
+              zIndex: 10,
+            });
+            overlay.setMap(map);
+            overlayRef.current = overlay;
+            onSelect?.(place.id);
+          });
+
           markers.set(place.id, marker);
         }
+
+        // 빈 곳을 누르면 말풍선 닫기
+        kakao.maps.event.addListener(map, "click", closePopup);
 
         if (mappable.length > 1) map.setBounds(bounds, 24, 24, 24, 24);
       })
@@ -190,6 +319,8 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
 
     return () => {
       cancelled = true;
+      overlayRef.current?.setMap(null);
+      overlayRef.current = null;
       markers.forEach((m) => m.setMap(null));
       markers.clear();
     };

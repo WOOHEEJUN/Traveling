@@ -148,3 +148,98 @@ button {
     @apply inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-semibold;
   }
 }
+
+/*
+ * 지도 마커 말풍선.
+ * 카카오 CustomOverlay 안에 들어가는 DOM이라 Tailwind 유틸리티가 적용되지 않아
+ * (지도 SDK가 만든 컨테이너 밖에서 생성됨) 일반 CSS로 작성합니다.
+ */
+.map-popup {
+  position: relative;
+  width: 232px;
+}
+.map-popup-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-canvas);
+  box-shadow: 0 6px 20px -4px rgb(15 15 15 / 0.22);
+}
+.map-popup-photo {
+  display: block;
+  width: 100%;
+  height: 104px;
+  object-fit: cover;
+  background: var(--color-surface);
+}
+.map-popup-body {
+  padding: 10px 12px 12px;
+}
+.map-popup-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+.map-popup-badge {
+  border-radius: 9999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+.map-popup-price {
+  font-size: 11px;
+  color: var(--color-stone);
+}
+.map-popup-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-ink);
+}
+.map-popup-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-slate);
+}
+.map-popup-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-link-blue);
+  text-decoration: none;
+}
+.map-popup-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.92);
+  color: var(--color-slate);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+/* 말풍선 아래 꼬리 */
+.map-popup-tail {
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  transform: rotate(45deg);
+  border-right: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-hairline);
+  background: var(--color-canvas);
+}

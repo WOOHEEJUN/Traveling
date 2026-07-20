@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import KakaoMap from "./KakaoMap";
 import { PLACE_TYPES, type ItineraryDay } from "@/lib/types";
 import { formatDriveTime } from "@/lib/distance";
+import { photoSrc } from "@/lib/photo";
 import {
   BedIcon,
   CakeIcon,
@@ -22,6 +23,7 @@ export interface ResultPlace {
   lat: number | null;
   lng: number | null;
   kakaoPlaceUrl: string | null;
+  photoUrl: string | null;
   note: string | null;
   priceLevel: string | null;
 }
@@ -157,6 +159,10 @@ export default function TripResult({
                       name: p.name,
                       lat: p.lat,
                       lng: p.lng,
+                      note: p.note,
+                      photoUrl: p.photoUrl,
+                      kakaoPlaceUrl: p.kakaoPlaceUrl,
+                      priceLevel: p.priceLevel,
                     }))}
                     focusedId={focusedPlaceId}
                     onSelect={setFocusedPlaceId}
@@ -225,8 +231,18 @@ export default function TripResult({
                                   : "border-hairline-soft bg-surface-soft"
                               }`}
                             >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
+                              <div className="flex items-start gap-3">
+                                {place.photoUrl && (
+                                  // 카카오 이미지 검색 썸네일 (외부 도메인이라 next/image 대신 img 사용)
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={photoSrc(place.photoUrl)!}
+                                    alt=""
+                                    loading="lazy"
+                                    className="h-16 w-16 shrink-0 rounded-md bg-surface object-cover"
+                                  />
+                                )}
+                                <div className="min-w-0 flex-1">
                                   <p className="flex flex-wrap items-center gap-1.5">
                                     <span className="text-[14px] font-medium text-ink">
                                       {place.name}

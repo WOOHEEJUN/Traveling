@@ -75,6 +75,7 @@ export default async function ResultPage({
               lat: p.lat,
               lng: p.lng,
               kakaoPlaceUrl: p.kakaoPlaceUrl,
+              photoUrl: p.photoUrl,
               note: p.note,
               priceLevel: p.priceLevel,
             })),

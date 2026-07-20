@@ -1,12 +1,12 @@
 /**
- * 카카오 로컬 API 래퍼.
+ * 카카오 REST API 래퍼 (로컬 검색 + 이미지 검색).
  *
  * Claude가 지목한 장소명으로 키워드 검색을 돌려서 좌표·주소·카카오맵 링크를
  * 붙입니다. 카카오는 REST로 평점을 주지 않기 때문에, place_url을 그대로
  * 노출해서 사용자가 카카오맵에서 직접 리뷰를 확인할 수 있게 합니다.
  */
 
-const KAKAO_LOCAL_BASE = "https://dapi.kakao.com/v2/local";
+const KAKAO_API_BASE = "https://dapi.kakao.com/v2";
 
 export interface KakaoPlace {
   name: string;
@@ -39,7 +39,7 @@ async function kakaoFetch(path: string, params: Record<string, string>) {
   const key = restKey();
   if (!key) return null;
 
-  const url = new URL(`${KAKAO_LOCAL_BASE}${path}`);
+  const url = new URL(`${KAKAO_API_BASE}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
@@ -59,7 +59,7 @@ async function kakaoFetch(path: string, params: Record<string, string>) {
 
 /** 키워드로 장소 1건 검색. 못 찾으면 null. */
 export async function searchPlace(keyword: string): Promise<KakaoPlace | null> {
-  const data = await kakaoFetch("/search/keyword.json", {
+  const data = await kakaoFetch("/local/search/keyword.json", {
     query: keyword,
     size: "1",
   });
@@ -85,6 +85,44 @@ export async function searchPlaces(
     keywords.map((k) =>
       searchPlace(k).catch((e) => {
         console.error(`장소 검색 실패: ${k}`, e);
+        return null;
+      }),
+    ),
+  );
+}
+
+interface KakaoImageDoc {
+  thumbnail_url: string;
+  image_url: string;
+  doc_url: string;
+}
+
+/**
+ * 장소 사진 1장 찾기.
+ *
+ * 카카오 로컬 API는 장소 사진을 주지 않아서 이미지 검색으로 대신합니다.
+ * 원본(image_url)은 네이버·티스토리 등이라 핫링크가 막히는 경우가 있어,
+ * 카카오 CDN에 있는 thumbnail_url을 씁니다.
+ */
+export async function searchPhoto(keyword: string): Promise<string | null> {
+  const data = await kakaoFetch("/search/image", {
+    query: keyword,
+    size: "1",
+    sort: "accuracy",
+  });
+
+  const doc: KakaoImageDoc | undefined = data?.documents?.[0];
+  return doc?.thumbnail_url ?? null;
+}
+
+/** 여러 장소 사진을 한 번에 (실패한 건 null) */
+export async function searchPhotos(
+  keywords: string[],
+): Promise<(string | null)[]> {
+  return Promise.all(
+    keywords.map((k) =>
+      searchPhoto(k).catch((e) => {
+        console.error(`사진 검색 실패: ${k}`, e);
         return null;
       }),
     ),

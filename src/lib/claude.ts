@@ -182,6 +182,25 @@ function buildUserPrompt(req: PlanRequest): string {
   return lines.join("\n");
 }
 
+/** claude-opus-4-8 단가 (USD / 100만 토큰) */
+const PRICE_PER_MTOK = { input: 5, output: 25, cacheRead: 0.5 };
+
+function logUsage(usage: Anthropic.Usage) {
+  const input = usage.input_tokens ?? 0;
+  const output = usage.output_tokens ?? 0;
+  const cacheRead = usage.cache_read_input_tokens ?? 0;
+
+  const cost =
+    (input / 1e6) * PRICE_PER_MTOK.input +
+    (output / 1e6) * PRICE_PER_MTOK.output +
+    (cacheRead / 1e6) * PRICE_PER_MTOK.cacheRead;
+
+  console.log(
+    `[여행추천 사용량] 입력 ${input} + 캐시읽기 ${cacheRead} / 출력 ${output} 토큰 ` +
+      `→ 약 $${cost.toFixed(4)} (₩${Math.round(cost * 1450)})`,
+  );
+}
+
 export async function planTrip(req: PlanRequest): Promise<PlannedOption[]> {
   const stream = getClient().messages.stream({
     model: "claude-opus-4-8",
@@ -199,6 +218,9 @@ export async function planTrip(req: PlanRequest): Promise<PlannedOption[]> {
   });
 
   const message = await stream.finalMessage();
+
+  // 요청 1건당 비용을 서버 로그로 남깁니다 (충전액이 한정적이라 추적이 필요)
+  logUsage(message.usage);
 
   if (message.stop_reason === "refusal") {
     throw new Error("추천을 생성할 수 없었어요. 조건을 바꿔서 다시 시도해주세요.");
