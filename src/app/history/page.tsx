@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import AppHeader from "@/components/AppHeader";
+import BottomNav from "@/components/BottomNav";
 import HistoryView, { type HistoryTrip } from "@/components/HistoryView";
 
 export default async function HistoryPage() {
@@ -40,7 +41,7 @@ export default async function HistoryPage() {
   return (
     <>
       <AppHeader userName={user.name} />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-24 pt-6">
         <div className="mb-5 px-1">
           <h1 className="text-[22px] font-semibold tracking-tight text-ink">
             지난 추천
@@ -51,6 +52,7 @@ export default async function HistoryPage() {
         </div>
         <HistoryView trips={data} />
       </main>
+      <BottomNav />
     </>
   );
 }

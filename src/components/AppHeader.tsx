@@ -11,19 +11,11 @@ export default function AppHeader({ userName }: { userName: string }) {
         >
           우리 어디가지
         </Link>
-        <nav className="flex items-center gap-1">
-          <Link
-            href="/history"
-            className="rounded-md px-2.5 py-2 text-[13px] font-medium text-steel"
-          >
-            지난 추천
-          </Link>
-          <span aria-hidden className="mx-1 h-3.5 w-px bg-hairline" />
-          <span className="hidden text-[13px] text-stone sm:inline">
-            {userName}
-          </span>
+        {/* 메뉴 이동은 하단 탭 바가 담당하고, 여기는 계정만 */}
+        <div className="flex items-center gap-1">
+          <span className="text-[13px] text-stone">{userName}</span>
           <LogoutButton />
-        </nav>
+        </div>
       </div>
     </header>
   );

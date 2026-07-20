@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import KakaoMap from "./KakaoMap";
 import { PLACE_TYPES, type ItineraryDay } from "@/lib/types";
 import { formatDriveTime } from "@/lib/distance";
@@ -13,6 +14,7 @@ import {
   CheckIcon,
   CompassIcon,
   ForkKnifeIcon,
+  HeartIcon,
 } from "./icons";
 
 export interface ResultPlace {
@@ -37,6 +39,8 @@ export interface ResultOption {
   itinerary: string | null;
   isChosen: boolean;
   places: ResultPlace[];
+  /** 이 후보로 이미 만든 여행 (저장/확정) */
+  plan: { id: string; status: string } | null;
 }
 
 const TYPE_ICON: Record<string, typeof BedIcon> = {
@@ -75,19 +79,35 @@ export default function TripResult({
     options.find((o) => o.isChosen)?.id ?? options[0]?.id ?? null,
   );
   const [focusedPlaceId, setFocusedPlaceId] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function handleConfirm(optionId: string) {
-    setConfirming(true);
+  /**
+   * 저장/확정 시 추천 후보를 편집 가능한 여행으로 복사합니다.
+   * 원본 추천은 그대로 남아서 "지난 추천"에서 계속 볼 수 있습니다.
+   */
+  async function createPlan(optionId: string, status: "saved" | "upcoming") {
+    setBusyId(optionId);
     try {
-      const res = await fetch(`/api/trips/${tripId}`, {
-        method: "PATCH",
+      const res = await fetch("/api/plans", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ optionId }),
+        body: JSON.stringify({ optionId, status }),
       });
-      if (res.ok) router.refresh();
+      const data = await res.json();
+      if (!res.ok) return;
+
+      if (status === "upcoming") {
+        // 확정하면 원본 추천에도 표시를 남기고 상세로 이동
+        await fetch(`/api/trips/${tripId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ optionId }),
+        });
+        router.push(`/plans/${data.planId}`);
+      }
+      router.refresh();
     } finally {
-      setConfirming(false);
+      setBusyId(null);
     }
   }
 
@@ -284,16 +304,37 @@ export default function TripResult({
                     );
                   })}
 
-                  {!option.isChosen && (
-                    <button
-                      type="button"
-                      onClick={() => handleConfirm(option.id)}
-                      disabled={confirming}
+                  {/* 저장 / 확정 */}
+                  {option.plan ? (
+                    <Link
+                      href={`/plans/${option.plan.id}`}
                       className="btn btn-secondary w-full"
                     >
-                      <CheckIcon width={16} height={16} />
-                      이 코스로 정하기
-                    </button>
+                      {option.plan.status === "saved"
+                        ? "저장함에서 보기"
+                        : "확정한 여행 보기"}
+                    </Link>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => createPlan(option.id, "saved")}
+                        disabled={busyId === option.id}
+                        className="btn btn-secondary flex-1"
+                      >
+                        <HeartIcon width={16} height={16} />
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => createPlan(option.id, "upcoming")}
+                        disabled={busyId === option.id}
+                        className="btn btn-primary flex-1"
+                      >
+                        <CheckIcon width={16} height={16} />
+                        이 코스로 정하기
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

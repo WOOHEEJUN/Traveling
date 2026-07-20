@@ -50,6 +50,10 @@
   --color-on-dark: #ffffff;
   --color-on-dark-muted: #a4a097;
 
+  /* 여행 상태 (파랑=예정, 회색=완료) */
+  --color-plan-upcoming: #2563c9;
+  --color-plan-upcoming-soft: #e4edfb;
+
   /* 시맨틱 */
   --color-success: #1aae39;
   --color-warning: #dd5b00;

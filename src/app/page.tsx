@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/session";
 import AppHeader from "@/components/AppHeader";
+import BottomNav from "@/components/BottomNav";
 import TripConditionForm from "@/components/TripConditionForm";
 
 export default async function HomePage() {
@@ -10,7 +11,7 @@ export default async function HomePage() {
   return (
     <>
       <AppHeader userName={user.name} />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-24 pt-6">
         <div className="mb-6 px-1">
           <h1 className="text-[22px] font-semibold tracking-tight text-ink">
             이번엔 어디 갈까
@@ -21,6 +22,7 @@ export default async function HomePage() {
         </div>
         <TripConditionForm />
       </main>
+      <BottomNav />
     </>
   );
 }

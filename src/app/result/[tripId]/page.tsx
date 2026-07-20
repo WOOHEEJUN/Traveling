@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import AppHeader from "@/components/AppHeader";
+import BottomNav from "@/components/BottomNav";
 import TripResult from "@/components/TripResult";
 import { tripStyleLabel } from "@/lib/types";
 import { nightsLabel } from "@/lib/distance";
@@ -34,10 +35,17 @@ export default async function ResultPage({
 
   if (!trip) notFound();
 
+  // 이 추천들로 이미 만든 여행이 있는지 (저장/확정 버튼 상태용)
+  const plans = await prisma.plan.findMany({
+    where: { sourceOptionId: { in: trip.options.map((o) => o.id) } },
+    select: { id: true, status: true, sourceOptionId: true },
+  });
+  const planByOption = new Map(plans.map((p) => [p.sourceOptionId, p]));
+
   return (
     <>
       <AppHeader userName={user.name} />
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-24 pt-6">
         <Link
           href="/"
           className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-steel"
@@ -67,6 +75,12 @@ export default async function ResultPage({
             estDriveMinutes: o.estDriveMinutes,
             itinerary: o.itinerary,
             isChosen: o.isChosen,
+            plan: planByOption.get(o.id)
+              ? {
+                  id: planByOption.get(o.id)!.id,
+                  status: planByOption.get(o.id)!.status,
+                }
+              : null,
             places: o.places.map((p) => ({
               id: p.id,
               type: p.type,
@@ -82,6 +96,7 @@ export default async function ResultPage({
           }))}
         />
       </main>
+      <BottomNav />
     </>
   );
 }

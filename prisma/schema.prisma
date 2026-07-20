@@ -14,6 +14,7 @@ model User {
   role  String @unique
   name  String
   trips Trip[]
+  plans Plan[]
 }
 
 /// 한 번의 추천 요청 (조건 + 결과 후보들)
@@ -48,6 +49,70 @@ model TripOption {
   isChosen             Boolean @default(false)
 
   places Place[]
+}
+
+/// 저장하거나 확정한 여행.
+/// 추천(TripOption)에서 복사해오며, 이후 편집은 전부 여기서만 일어납니다.
+/// 원본 추천을 그대로 두기 위해 별도 테이블로 분리했습니다.
+model Plan {
+  id             String    @id @default(cuid())
+  title          String // 예: "강릉 여행"
+  regionName     String
+  style          String // hotel | sightseeing | food
+  origin         String
+  startDate      DateTime
+  endDate        DateTime
+  nights         Int
+  status         String    @default("saved") // saved | upcoming | completed
+  memo           String?
+  rating         Int? // 1~5, 다녀온 뒤
+  review         String? // 한줄 후기
+  completedAt    DateTime?
+  savedBy        User      @relation(fields: [savedById], references: [id])
+  savedById      String
+  sourceOptionId String? // 어느 추천에서 왔는지 (원본 추적용)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  days PlanDay[]
+
+  @@index([startDate])
+  @@index([status])
+  @@index([sourceOptionId])
+}
+
+/// 확정 여행의 하루치 일정
+model PlanDay {
+  id        String  @id @default(cuid())
+  plan      Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  planId    String
+  dayNumber Int
+  title     String?
+  memo      String? // AI가 써준 코스 설명 + 사용자 메모
+
+  items PlanItem[]
+
+  @@unique([planId, dayNumber])
+}
+
+/// 하루 안의 방문지 하나 (순서 변경/시간 지정 가능)
+model PlanItem {
+  id            String  @id @default(cuid())
+  day           PlanDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  dayId         String
+  sortOrder     Int
+  type          String // stay | food | dessert | activity
+  name          String
+  address       String?
+  lat           Float?
+  lng           Float?
+  kakaoPlaceUrl String?
+  photoUrl      String?
+  note          String?
+  priceLevel    String?
+  visitTime     String? // "12:30"
+
+  @@index([dayId, sortOrder])
 }
 
 /// 후보에 딸린 실제 장소 (숙소/맛집/디저트/액티비티)
