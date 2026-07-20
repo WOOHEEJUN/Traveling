@@ -182,8 +182,13 @@ function buildUserPrompt(req: PlanRequest): string {
   return lines.join("\n");
 }
 
-/** claude-opus-4-8 단가 (USD / 100만 토큰) */
-const PRICE_PER_MTOK = { input: 5, output: 25, cacheRead: 0.5 };
+const MODEL = "claude-sonnet-5";
+
+/**
+ * claude-sonnet-5 단가 (USD / 100만 토큰).
+ * 2026-08-31까지는 도입 할인가($2/$10)라 실제 청구는 이보다 적게 나옵니다.
+ */
+const PRICE_PER_MTOK = { input: 3, output: 15, cacheRead: 0.3 };
 
 function logUsage(usage: Anthropic.Usage) {
   const input = usage.input_tokens ?? 0;
@@ -203,12 +208,14 @@ function logUsage(usage: Anthropic.Usage) {
 
 export async function planTrip(req: PlanRequest): Promise<PlannedOption[]> {
   const stream = getClient().messages.stream({
-    model: "claude-opus-4-8",
-    max_tokens: 16000,
+    model: MODEL,
+    // 사고 토큰과 JSON 출력이 같은 예산을 나눠 쓰기 때문에 넉넉히 잡습니다.
+    // 16000으로는 후보 3개를 다 쓰기 전에 잘려서 JSON 파싱이 깨졌습니다.
+    max_tokens: 32000,
     system: SYSTEM_PROMPT,
     thinking: { type: "adaptive" },
     output_config: {
-      effort: "high",
+      effort: "medium",
       format: {
         type: "json_schema",
         schema: RESPONSE_SCHEMA,
@@ -225,12 +232,23 @@ export async function planTrip(req: PlanRequest): Promise<PlannedOption[]> {
   if (message.stop_reason === "refusal") {
     throw new Error("추천을 생성할 수 없었어요. 조건을 바꿔서 다시 시도해주세요.");
   }
+  // 토큰이 모자라 잘리면 JSON이 깨진 채로 오므로 파싱 전에 걸러냅니다
+  if (message.stop_reason === "max_tokens") {
+    throw new Error(
+      "추천 내용이 너무 길어서 중간에 잘렸어요. 다시 시도해주세요.",
+    );
+  }
 
   const textBlock = message.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
     throw new Error("추천 응답이 비어 있어요. 다시 시도해주세요.");
   }
 
-  const parsed = JSON.parse(textBlock.text) as { options: PlannedOption[] };
-  return parsed.options;
+  try {
+    const parsed = JSON.parse(textBlock.text) as { options: PlannedOption[] };
+    return parsed.options;
+  } catch {
+    console.error("추천 JSON 파싱 실패:", textBlock.text.slice(0, 500));
+    throw new Error("추천 결과를 읽는 데 실패했어요. 다시 시도해주세요.");
+  }
 }
