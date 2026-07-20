@@ -1,28 +1,35 @@
-export const BUDGET_THEMES = [
+/**
+ * 여행 스타일. 가격대가 아니라 "이번 여행에서 뭘 중심에 둘지"를 고릅니다.
+ * Claude 프롬프트에서 코스 구성 비중을 정하는 데 쓰입니다.
+ */
+export const TRIP_STYLES = [
   {
-    key: "gaseongbi",
-    label: "가성비 힐링",
-    hint: "부담 없이, 알차게",
-    description: "숙소는 깔끔한 가성비 위주, 맛집도 현지인 물가 기준",
+    key: "hotel",
+    label: "호캉스",
+    hint: "숙소에서 푹 쉬기",
+    description:
+      "좋은 숙소가 여행의 중심. 이동을 최소화하고 숙소 시설(수영장·스파·뷰·조식)에서 보내는 시간을 길게 잡습니다. 밖에 나가는 일정은 숙소 근처로 가볍게만.",
   },
   {
-    key: "date",
-    label: "평범한 데이트",
-    hint: "적당히 좋은 걸로",
-    description: "무난한 중급 숙소와 분위기 좋은 식당",
+    key: "sightseeing",
+    label: "관광위주",
+    hint: "많이 보고 많이 걷기",
+    description:
+      "볼거리와 체험이 중심. 명소·전망대·산책로·액티비티를 촘촘히 넣고, 숙소는 동선상 편한 곳이면 충분합니다.",
   },
   {
-    key: "anniversary",
-    label: "기념일 플렉스",
-    hint: "오늘은 좀 쓰자",
-    description: "뷰 좋은 호텔·리조트, 특별한 다이닝",
+    key: "food",
+    label: "맛집탐방",
+    hint: "먹으러 가는 여행",
+    description:
+      "먹는 게 중심. 그 지역에서만 먹을 수 있는 음식과 유명한 집을 끼니마다 배치하고, 사이사이 소화시킬 겸 가벼운 코스를 넣습니다. 숙소는 먹자골목 접근성 우선.",
   },
 ] as const;
 
-export type BudgetTheme = (typeof BUDGET_THEMES)[number]["key"];
+export type TripStyle = (typeof TRIP_STYLES)[number]["key"];
 
-export function budgetThemeLabel(key: string): string {
-  return BUDGET_THEMES.find((t) => t.key === key)?.label ?? key;
+export function tripStyleLabel(key: string): string {
+  return TRIP_STYLES.find((t) => t.key === key)?.label ?? key;
 }
 
 export const PLACE_TYPES = [

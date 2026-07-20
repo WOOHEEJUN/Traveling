@@ -25,7 +25,7 @@ model Trip {
   endDate     DateTime
   nights      Int
   origin      String // 출발지 (기본: 원주)
-  budgetTheme String // gaseongbi | date | anniversary
+  style       String // hotel | sightseeing | food
   wantsDessert Boolean @default(false)
   status      String   @default("proposed") // proposed | confirmed
   createdAt   DateTime @default(now())

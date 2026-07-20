@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Calendar from "./Calendar";
-import { BUDGET_THEMES } from "@/lib/types";
+import { TRIP_STYLES } from "@/lib/types";
 import { ORIGIN_PRESETS, nightsLabel } from "@/lib/distance";
 import { CakeIcon, CheckIcon } from "./icons";
 
@@ -26,7 +26,7 @@ export default function TripConditionForm() {
   const [endDate, setEndDate] = useState<string | null>(null);
   const [origin, setOrigin] = useState<string>(ORIGIN_PRESETS[0].name);
   const [customOrigin, setCustomOrigin] = useState("");
-  const [budgetTheme, setBudgetTheme] = useState<string>("");
+  const [style, setStyle] = useState<string>("");
   const [wantsDessert, setWantsDessert] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +34,7 @@ export default function TripConditionForm() {
   const usingCustomOrigin = origin === "__custom";
   const resolvedOrigin = usingCustomOrigin ? customOrigin.trim() : origin;
   const ready =
-    Boolean(startDate && endDate && budgetTheme && resolvedOrigin) && !loading;
+    Boolean(startDate && endDate && style && resolvedOrigin) && !loading;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -49,7 +49,7 @@ export default function TripConditionForm() {
           startDate,
           endDate,
           origin: resolvedOrigin,
-          budgetTheme,
+          style,
           wantsDessert,
         }),
       });
@@ -139,20 +139,20 @@ export default function TripConditionForm() {
         )}
       </section>
 
-      {/* 예산 테마 */}
+      {/* 여행 스타일 */}
       <section className="card">
         <h2 className="mb-1 text-[15px] font-semibold text-ink">이번엔 어떤 느낌으로</h2>
         <p className="mb-3 text-[13px] text-steel">
-          숙소 등급과 식당 가격대가 여기에 맞춰집니다
+          고른 스타일에 따라 코스의 무게중심이 달라집니다
         </p>
         <div className="space-y-2">
-          {BUDGET_THEMES.map((t) => {
-            const selected = budgetTheme === t.key;
+          {TRIP_STYLES.map((t) => {
+            const selected = style === t.key;
             return (
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setBudgetTheme(t.key)}
+                onClick={() => setStyle(t.key)}
                 aria-pressed={selected}
                 className={`flex w-full items-center justify-between rounded-md border px-4 py-3 text-left transition-colors ${
                   selected

@@ -9,7 +9,7 @@ import {
   estimateDriveMinutes,
   maxOneWayMinutes,
 } from "@/lib/distance";
-import { BUDGET_THEMES } from "@/lib/types";
+import { TRIP_STYLES } from "@/lib/types";
 
 // Claude 호출이 길어질 수 있어 여유를 둡니다.
 export const maxDuration = 300;
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { startDate, endDate, origin, budgetTheme, wantsDessert } = body;
+  const { startDate, endDate, origin, style, wantsDessert } = body;
 
   if (!startDate || !endDate) {
     return NextResponse.json(
@@ -34,9 +34,9 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!BUDGET_THEMES.some((t) => t.key === budgetTheme)) {
+  if (!TRIP_STYLES.some((t) => t.key === style)) {
     return NextResponse.json(
-      { error: "예산 테마를 선택해주세요." },
+      { error: "여행 스타일을 선택해주세요." },
       { status: 400 },
     );
   }
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       startDate,
       endDate,
       nights,
-      budgetTheme,
+      style,
       wantsDessert: Boolean(wantsDessert),
       maxOneWayMinutes: allowedMinutes,
       recentRegions,
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       endDate: end,
       nights,
       origin: originName,
-      budgetTheme,
+      style,
       wantsDessert: Boolean(wantsDessert),
     },
   });

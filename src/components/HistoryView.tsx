@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { budgetThemeLabel } from "@/lib/types";
+import { tripStyleLabel } from "@/lib/types";
 import { formatDriveTime, nightsLabel } from "@/lib/distance";
 import { CarIcon, ChevronRightIcon } from "./icons";
 
@@ -12,7 +12,7 @@ export interface HistoryTrip {
   endDate: string;
   nights: number;
   origin: string;
-  budgetTheme: string;
+  style: string;
   status: string;
   createdByName: string;
   options: {
@@ -130,7 +130,7 @@ export default function HistoryView({ trips }: { trips: HistoryTrip[] }) {
                       {nightsLabel(trip.nights)} · {trip.origin} 출발
                     </p>
                     <p className="mt-0.5 text-[12px] text-stone">
-                      {budgetThemeLabel(trip.budgetTheme)} · 만든 사람:{" "}
+                      {tripStyleLabel(trip.style)} · 만든 사람:{" "}
                       {trip.createdByName}
                     </p>
                   </div>

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import AppHeader from "@/components/AppHeader";
 import TripResult from "@/components/TripResult";
-import { budgetThemeLabel } from "@/lib/types";
+import { tripStyleLabel } from "@/lib/types";
 import { nightsLabel } from "@/lib/distance";
 import { ArrowLeftIcon } from "@/components/icons";
 
@@ -53,7 +53,7 @@ export default async function ResultPage({
           <p className="mt-1.5 text-[13px] text-steel">
             {trip.origin} 출발 · {formatDate(trip.startDate)}–
             {formatDate(trip.endDate)} · {nightsLabel(trip.nights)} ·{" "}
-            {budgetThemeLabel(trip.budgetTheme)}
+            {tripStyleLabel(trip.style)}
           </p>
         </div>
 

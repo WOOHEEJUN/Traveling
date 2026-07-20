@@ -31,7 +31,7 @@ export default async function HistoryPage() {
     endDate: t.endDate.toISOString(),
     nights: t.nights,
     origin: t.origin,
-    budgetTheme: t.budgetTheme,
+    style: t.style,
     status: t.status,
     createdByName: t.createdBy.name,
     options: t.options,
