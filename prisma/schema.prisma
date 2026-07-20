@@ -1,0 +1,64 @@
+// 커플 여행 플래너 - 데이터 모델
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+/// 앱 사용자 ("나" / "여자친구" 2명 고정)
+model User {
+  id    String @id @default(cuid())
+  name  String @unique
+  trips Trip[]
+}
+
+/// 한 번의 추천 요청 (조건 + 결과 후보들)
+model Trip {
+  id          String   @id @default(cuid())
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdById String
+  startDate   DateTime
+  endDate     DateTime
+  nights      Int
+  origin      String // 출발지 (기본: 원주)
+  budgetTheme String // gaseongbi | date | anniversary
+  wantsDessert Boolean @default(false)
+  status      String   @default("proposed") // proposed | confirmed
+  createdAt   DateTime @default(now())
+
+  options TripOption[]
+
+  @@index([createdAt])
+}
+
+/// 추천된 지역 후보 하나
+model TripOption {
+  id                   String  @id @default(cuid())
+  trip                 Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  tripId               String
+  regionName           String // 예: "강릉"
+  summary              String // 왜 이 지역인지 한줄 요약
+  estDriveMinutes      Int // 출발지 기준 편도 예상 운전시간(분)
+  stayAreaNote         String? // 숙소는 이 근처가 좋다는 설명
+  itinerary            String? // 일자별 코스 (JSON 문자열)
+  isChosen             Boolean @default(false)
+
+  places Place[]
+}
+
+/// 후보에 딸린 실제 장소 (숙소/맛집/디저트/액티비티)
+model Place {
+  id           String  @id @default(cuid())
+  option       TripOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  optionId     String
+  type         String // stay | food | dessert | activity
+  name         String
+  address      String?
+  lat          Float?
+  lng          Float?
+  kakaoPlaceUrl String?
+  note         String? // 플래너의 코멘트
+  priceLevel   String? // 가성비/보통/프리미엄
+}

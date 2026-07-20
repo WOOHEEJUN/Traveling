@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/*
+ * 디자인 토큰 — DESIGN(notion).md 기반, accent만 커플/데이트 톤에 맞춰 코랄 계열로 교체
+ */
+@theme {
+  /* Primary — 코랄 (Notion 보라 대체) */
+  --color-primary: #ff6b6b;
+  --color-primary-pressed: #e85555;
+  --color-primary-deep: #c94444;
+  --color-primary-soft: #fff0ef;
+  --color-on-primary: #ffffff;
+
+  /* 브랜드 딥톤 (히어로 밴드) */
+  --color-brand-navy: #1f2233;
+  --color-brand-navy-deep: #15182a;
+
+  --color-link-blue: #0075de;
+
+  /* 카테고리 파스텔 틴트 (숙소/맛집/디저트/액티비티) */
+  --color-tint-peach: #ffe8d4;
+  --color-tint-rose: #fde0ec;
+  --color-tint-mint: #d9f3e1;
+  --color-tint-lavender: #e6e0f5;
+  --color-tint-sky: #dcecfa;
+  --color-tint-yellow: #fef7d6;
+  --color-tint-cream: #f8f5e8;
+
+  /* 카테고리 진한 색 (지도 마커 / 뱃지 텍스트) */
+  --color-cat-stay: #7b3ff2;
+  --color-cat-food: #dd5b00;
+  --color-cat-dessert: #d6336c;
+  --color-cat-activity: #2a9d99;
+
+  /* 서피스 */
+  --color-canvas: #ffffff;
+  --color-surface: #f6f5f4;
+  --color-surface-soft: #fafaf9;
+  --color-hairline: #e5e3df;
+  --color-hairline-soft: #ede9e4;
+  --color-hairline-strong: #c8c4be;
+
+  /* 텍스트 */
+  --color-ink: #1a1a1a;
+  --color-charcoal: #37352f;
+  --color-slate: #5d5b54;
+  --color-steel: #787671;
+  --color-stone: #a4a097;
+  --color-muted: #bbb8b1;
+  --color-on-dark: #ffffff;
+  --color-on-dark-muted: #a4a097;
+
+  /* 시맨틱 */
+  --color-success: #1aae39;
+  --color-warning: #dd5b00;
+  --color-error: #e03131;
+
+  /* 라운드 */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+
+  --font-sans: "Pretendard Variable", Pretendard, Inter, -apple-system,
+    BlinkMacSystemFont, system-ui, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+/* Pretendard — 한글 가독성이 Inter보다 크게 좋음 (Inter 계열의 한글 대응 폰트) */
+@font-face {
+  font-family: "Pretendard Variable";
+  font-weight: 45 920;
+  font-style: normal;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/woff2/PretendardVariable.woff2")
+    format("woff2-variations");
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-surface-soft);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 모바일(iOS)에서 입력 포커스 시 자동 확대 방지 */
+input,
+select,
+textarea,
+button {
+  font-size: 16px;
+  font-family: inherit;
+}
+
+@layer components {
+  /* Notion 스타일: 버튼은 8px 사각형, 카드는 12px */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 text-sm font-medium transition-colors;
+    min-height: 44px; /* 터치 타겟 */
+  }
+  .btn-primary {
+    @apply btn bg-primary text-on-primary;
+  }
+  .btn-primary:active {
+    @apply bg-primary-pressed;
+  }
+  .btn-primary:disabled {
+    @apply bg-hairline text-muted;
+  }
+  .btn-secondary {
+    @apply btn border border-hairline-strong bg-canvas text-ink;
+  }
+  .btn-secondary:active {
+    @apply bg-surface;
+  }
+  .btn-ghost {
+    @apply btn text-slate;
+  }
+
+  .card {
+    @apply rounded-lg border border-hairline bg-canvas p-5;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-hairline-strong bg-canvas px-3 text-ink outline-none;
+    min-height: 44px;
+  }
+  .input:focus {
+    @apply border-primary;
+    box-shadow: 0 0 0 1px var(--color-primary);
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+  .tag {
+    @apply inline-flex items-center rounded-sm px-2 py-0.5 text-xs font-semibold;
+  }
+}
