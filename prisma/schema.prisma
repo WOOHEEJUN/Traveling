@@ -7,10 +7,12 @@ datasource db {
   provider = "sqlite"
 }
 
-/// 앱 사용자 ("나" / "여자친구" 2명 고정)
+/// 앱 사용자 (2명 고정)
+/// role은 ASCII 고정키(me|girlfriend), name은 화면에 보여줄 한글 이름
 model User {
   id    String @id @default(cuid())
-  name  String @unique
+  role  String @unique
+  name  String
   trips Trip[]
 }
 

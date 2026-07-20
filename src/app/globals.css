@@ -98,6 +98,11 @@ button {
   font-family: inherit;
 }
 
+/*
+ * 공통 컴포넌트 클래스.
+ * Tailwind 4는 같은 레이어에서 정의한 커스텀 클래스를 @apply 할 수 없어서,
+ * 변형(btn-primary 등)은 마크업에서 `btn btn-primary`처럼 함께 붙여 씁니다.
+ */
 @layer components {
   /* Notion 스타일: 버튼은 8px 사각형, 카드는 12px */
   .btn {
@@ -105,7 +110,7 @@ button {
     min-height: 44px; /* 터치 타겟 */
   }
   .btn-primary {
-    @apply btn bg-primary text-on-primary;
+    @apply bg-primary text-on-primary;
   }
   .btn-primary:active {
     @apply bg-primary-pressed;
@@ -114,13 +119,13 @@ button {
     @apply bg-hairline text-muted;
   }
   .btn-secondary {
-    @apply btn border border-hairline-strong bg-canvas text-ink;
+    @apply border border-hairline-strong bg-canvas text-ink;
   }
   .btn-secondary:active {
     @apply bg-surface;
   }
   .btn-ghost {
-    @apply btn text-slate;
+    @apply text-slate;
   }
 
   .card {
