@@ -245,7 +245,8 @@ export default function TripResult({
                             <li
                               key={place.id}
                               onMouseEnter={() => setFocusedPlaceId(place.id)}
-                              className={`rounded-md border p-3 transition-colors ${
+                              onClick={() => setFocusedPlaceId(place.id)}
+                              className={`cursor-pointer rounded-md border p-3 transition-colors ${
                                 focusedPlaceId === place.id
                                   ? "border-primary bg-primary-soft/40"
                                   : "border-hairline-soft bg-surface-soft"

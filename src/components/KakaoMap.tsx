@@ -34,15 +34,23 @@ const MARKER_COLORS: Record<string, string> = {
 interface KakaoLatLng {
   _brand?: never;
 }
+interface KakaoPoint {
+  x: number;
+  y: number;
+}
+interface KakaoProjection {
+  containerPointFromCoords(latlng: KakaoLatLng): KakaoPoint;
+  coordsFromContainerPoint(point: KakaoPoint): KakaoLatLng;
+}
 interface KakaoMarker {
   setMap(map: KakaoMapInstance | null): void;
 }
 interface KakaoMapInstance {
-  setBounds(
-    bounds: KakaoBounds,
-    ...padding: number[]
-  ): void;
+  setBounds(bounds: KakaoBounds, ...padding: number[]): void;
   panTo(latlng: KakaoLatLng): void;
+  relayout(): void;
+  getCenter(): KakaoLatLng;
+  getProjection(): KakaoProjection;
 }
 interface KakaoCustomOverlay {
   setMap(map: KakaoMapInstance | null): void;
@@ -57,6 +65,7 @@ interface KakaoNamespace {
     load(cb: () => void): void;
     LatLng: new (lat: number, lng: number) => KakaoLatLng;
     LatLngBounds: new () => KakaoBounds;
+    Point: new (x: number, y: number) => KakaoPoint;
     Map: new (
       container: HTMLElement,
       options: { center: KakaoLatLng; level: number },
@@ -78,9 +87,9 @@ interface KakaoNamespace {
       yAnchor?: number;
       xAnchor?: number;
       zIndex?: number;
+      clickable?: boolean;
     }) => KakaoCustomOverlay;
     Size: new (w: number, h: number) => object;
-    Point: new (x: number, y: number) => object;
     event: {
       addListener(
         target: KakaoMarker | KakaoMapInstance,
@@ -146,6 +155,24 @@ function isMappable(p: MapPlace): p is MappablePlace {
   return typeof p.lat === "number" && typeof p.lng === "number";
 }
 
+/** 마커/라벨을 눌렀을 때 항상 보이는 이름표. */
+function buildLabel(place: MappablePlace, color: string): HTMLElement {
+  const el = document.createElement("div");
+  el.className = "map-label";
+
+  const dot = document.createElement("span");
+  dot.className = "map-label-dot";
+  dot.style.backgroundColor = color;
+  el.appendChild(dot);
+
+  const text = document.createElement("span");
+  text.className = "map-label-text";
+  text.textContent = place.name;
+  el.appendChild(text);
+
+  return el;
+}
+
 /** 마커를 눌렀을 때 뜨는 말풍선. DOM으로 만들어야 XSS 걱정 없이 안전합니다. */
 function buildPopup(
   place: MappablePlace,
@@ -164,7 +191,7 @@ function buildPopup(
     const img = document.createElement("img");
     img.src = photo;
     img.alt = "";
-    img.className = "map-popup-photo";
+    img.className = "map-popup-thumb";
     // 사진이 깨지면 영역만 차지하지 않도록 제거
     img.onerror = () => img.remove();
     card.appendChild(img);
@@ -244,18 +271,24 @@ interface Props {
 export default function KakaoMap({ places, focusedId, onSelect }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<KakaoMapInstance | null>(null);
-  const markersRef = useRef<Map<string, KakaoMarker>>(new Map());
+  const labelElsRef = useRef<Map<string, HTMLElement>>(new Map());
   const overlayRef = useRef<KakaoCustomOverlay | null>(null);
+  // 지금 열려 있는 말풍선의 장소 id — 리스트 포커스와 마커 클릭이 서로 안 싸우게
+  const popupIdRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const appKey = process.env.NEXT_PUBLIC_KAKAO_JS_KEY;
   const mappable = places.filter(isMappable);
+  // 장소 구성이 실제로 바뀔 때만 지도를 다시 그리기 위한 안정적인 키.
+  // (부모가 리렌더될 때마다 places 배열은 새로 생기므로 배열 자체를 deps로 쓰면 안 됨)
+  const placesKey = mappable.map((p) => p.id).join("|");
 
   useEffect(() => {
     if (!appKey || mappable.length === 0) return;
 
     let cancelled = false;
-    const markers = markersRef.current;
+    const labelEls = labelElsRef.current;
+    const cleanupRef: { current: null | (() => void) } = { current: null };
 
     loadKakaoSdk(appKey)
       .then((kakao) => {
@@ -267,16 +300,60 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
         });
         mapRef.current = map;
 
+        const markers: KakaoMarker[] = [];
+        const labelOverlays: KakaoCustomOverlay[] = [];
         const bounds = new kakao.maps.LatLngBounds();
+        // 말풍선을 열 때 마커가 지도 어디쯤 오게 할지 (0=위, 1=아래)
+        const posById = new Map<string, KakaoLatLng>();
 
         const closePopup = () => {
           overlayRef.current?.setMap(null);
           overlayRef.current = null;
+          popupIdRef.current = null;
+        };
+
+        /** 마커를 지도 아래쪽(약 72% 높이)으로 옮겨서 위에 뜨는 말풍선이 안 잘리게 */
+        const panWithRoom = (pos: KakaoLatLng) => {
+          const el = containerRef.current;
+          const proj = map.getProjection();
+          if (!el || !proj) {
+            map.panTo(pos);
+            return;
+          }
+          const h = el.clientHeight;
+          const m = proj.containerPointFromCoords(pos);
+          const target = proj.coordsFromContainerPoint(
+            new kakao.maps.Point(m.x, h / 2 + m.y - h * 0.72),
+          );
+          map.panTo(target);
+        };
+
+        const openPopup = (id: string) => {
+          const place = mappable.find((p) => p.id === id);
+          const pos = posById.get(id);
+          if (!place || !pos) return;
+          if (popupIdRef.current === id && overlayRef.current) return;
+
+          closePopup();
+          const color = MARKER_COLORS[place.type] ?? "#ff6b6b";
+          const typeLabel =
+            PLACE_TYPES.find((t) => t.key === place.type)?.label ?? "";
+          const overlay = new kakao.maps.CustomOverlay({
+            position: pos,
+            content: buildPopup(place, typeLabel, color, closePopup),
+            yAnchor: 1.32, // 마커 위쪽에 뜨도록
+            zIndex: 20,
+          });
+          overlay.setMap(map);
+          overlayRef.current = overlay;
+          popupIdRef.current = id;
+          panWithRoom(pos);
         };
 
         for (const place of mappable) {
           const pos = new kakao.maps.LatLng(place.lat, place.lng);
           bounds.extend(pos);
+          posById.set(place.id, pos);
 
           const color = MARKER_COLORS[place.type] ?? "#ff6b6b";
           const marker = new kakao.maps.Marker({
@@ -289,29 +366,56 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
               { offset: new kakao.maps.Point(13, 34) },
             ),
           });
+          markers.push(marker);
+
+          // 마커 아래에 항상 보이는 이름표 (모바일은 hover 툴팁이 없으므로 필수)
+          const labelEl = buildLabel(place, color);
+          labelEl.onclick = () => {
+            openPopup(place.id);
+            onSelect?.(place.id);
+          };
+          labelEls.set(place.id, labelEl);
+          const labelOverlay = new kakao.maps.CustomOverlay({
+            position: pos,
+            content: labelEl,
+            yAnchor: 0,
+            zIndex: 5,
+            clickable: true,
+          });
+          labelOverlay.setMap(map);
+          labelOverlays.push(labelOverlay);
 
           kakao.maps.event.addListener(marker, "click", () => {
-            closePopup();
-            const typeLabel =
-              PLACE_TYPES.find((t) => t.key === place.type)?.label ?? "";
-            const overlay = new kakao.maps.CustomOverlay({
-              position: pos,
-              content: buildPopup(place, typeLabel, color, closePopup),
-              yAnchor: 1.28, // 마커 위쪽에 뜨도록
-              zIndex: 10,
-            });
-            overlay.setMap(map);
-            overlayRef.current = overlay;
+            openPopup(place.id);
             onSelect?.(place.id);
           });
-
-          markers.set(place.id, marker);
         }
 
         // 빈 곳을 누르면 말풍선 닫기
         kakao.maps.event.addListener(map, "click", closePopup);
 
-        if (mappable.length > 1) map.setBounds(bounds, 24, 24, 24, 24);
+        if (mappable.length > 1) map.setBounds(bounds, 28, 28, 28, 28);
+
+        // 아코디언이 펼쳐지며 만들어진 지도는 컨테이너 크기 계산이 늦어
+        // 타일이 회색으로 남는 경우가 있어, 레이아웃을 다시 잡아줍니다.
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+          map.relayout();
+          if (mappable.length > 1) map.setBounds(bounds, 28, 28, 28, 28);
+          else
+            map.panTo(new kakao.maps.LatLng(mappable[0].lat, mappable[0].lng));
+        });
+
+        // 정리용 참조 저장
+        cleanupRef.current = () => {
+          overlayRef.current?.setMap(null);
+          overlayRef.current = null;
+          popupIdRef.current = null;
+          labelOverlays.forEach((o) => o.setMap(null));
+          markers.forEach((m) => m.setMap(null));
+          labelEls.clear();
+          mapRef.current = null;
+        };
       })
       .catch((e: Error) => {
         if (!cancelled) setLoadError(e.message);
@@ -319,22 +423,27 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
 
     return () => {
       cancelled = true;
-      overlayRef.current?.setMap(null);
-      overlayRef.current = null;
-      markers.forEach((m) => m.setMap(null));
-      markers.clear();
+      cleanupRef.current?.();
     };
-    // 장소 목록이 바뀔 때만 지도를 다시 그림
+    // placesKey 가 바뀔 때만 (장소 구성이 실제로 달라질 때만) 다시 그림
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [places, appKey]);
+  }, [placesKey, appKey]);
 
-  // 리스트에서 장소를 고르면 해당 마커로 이동
+  // 리스트에서 장소를 고르면 해당 마커로 이동 + 이름표 강조
   useEffect(() => {
+    // 이름표 강조 갱신
+    labelElsRef.current.forEach((el, id) => {
+      el.classList.toggle("is-focused", id === focusedId);
+    });
+
     const kakao = window.kakao;
-    if (!focusedId || !mapRef.current || !kakao) return;
+    const map = mapRef.current;
+    if (!focusedId || !map || !kakao) return;
     const place = mappable.find((p) => p.id === focusedId);
     if (!place) return;
-    mapRef.current.panTo(new kakao.maps.LatLng(place.lat, place.lng));
+    // 마커 클릭으로 이미 말풍선이 자리를 잡았으면 그대로 두고, 리스트 탭 등에서만 이동
+    if (popupIdRef.current === focusedId) return;
+    map.panTo(new kakao.maps.LatLng(place.lat, place.lng));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedId]);
 
@@ -358,7 +467,7 @@ export default function KakaoMap({ places, focusedId, onSelect }: Props) {
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
       {/* 마커 색 범례 */}
-      <div className="pointer-events-none absolute left-3 top-3 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-canvas/90 px-2.5 py-1.5 backdrop-blur">
+      <div className="pointer-events-none absolute left-3 top-3 z-[1] flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-canvas/90 px-2.5 py-1.5 backdrop-blur">
         {PLACE_TYPES.map((t) => (
           <span key={t.key} className="flex items-center gap-1.5">
             <span
