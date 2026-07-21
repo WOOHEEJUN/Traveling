@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Calendar from "./Calendar";
-import { TRIP_STYLES } from "@/lib/types";
+import {
+  DOMESTIC_DEST_PRESETS,
+  OVERSEAS_DEST_PRESETS,
+  TRIP_MODES,
+  TRIP_STYLES,
+  type TripMode,
+} from "@/lib/types";
 import { ORIGIN_PRESETS, nightsLabel } from "@/lib/distance";
 import { CakeIcon, CheckIcon } from "./icons";
 
@@ -22,6 +28,10 @@ function formatRange(start: string, end: string | null): string {
 
 export default function TripConditionForm() {
   const router = useRouter();
+  const [mode, setMode] = useState<TripMode>("recommend");
+  const [isOverseas, setIsOverseas] = useState(false);
+  const [destination, setDestination] = useState<string>("");
+  const [customDestination, setCustomDestination] = useState("");
   const [startDate, setStartDate] = useState<string | null>(null);
   const [endDate, setEndDate] = useState<string | null>(null);
   const [origin, setOrigin] = useState<string>(ORIGIN_PRESETS[0].name);
@@ -33,8 +43,23 @@ export default function TripConditionForm() {
 
   const usingCustomOrigin = origin === "__custom";
   const resolvedOrigin = usingCustomOrigin ? customOrigin.trim() : origin;
+
+  const destinationMode = mode === "destination";
+  const usingCustomDestination = destination === "__custom";
+  const resolvedDestination = usingCustomDestination
+    ? customDestination.trim()
+    : destination;
+  // 해외는 인천공항 출발이 정해져 있어 출발지 선택이 필요 없음
+  const needsOrigin = !destinationMode || !isOverseas;
+
   const ready =
-    Boolean(startDate && endDate && style && resolvedOrigin) && !loading;
+    Boolean(
+      startDate &&
+        endDate &&
+        style &&
+        (!needsOrigin || resolvedOrigin) &&
+        (!destinationMode || resolvedDestination),
+    ) && !loading;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -46,11 +71,16 @@ export default function TripConditionForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          mode,
           startDate,
           endDate,
           origin: resolvedOrigin,
           style,
           wantsDessert,
+          ...(destinationMode && {
+            destination: resolvedDestination,
+            isOverseas,
+          }),
         }),
       });
       const data = await res.json();
@@ -66,10 +96,118 @@ export default function TripConditionForm() {
     }
   }
 
-  if (loading) return <PlanningState />;
+  if (loading) return <PlanningState destinationMode={destinationMode} />;
+
+  const destPresets = isOverseas ? OVERSEAS_DEST_PRESETS : DOMESTIC_DEST_PRESETS;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* 모드: 추천받기 vs 직접 정하기 */}
+      <div className="grid grid-cols-2 gap-2">
+        {TRIP_MODES.map((m) => {
+          const selected = mode === m.key;
+          return (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMode(m.key)}
+              aria-pressed={selected}
+              className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                selected
+                  ? "border-primary bg-canvas shadow-[0_0_0_1px_var(--color-primary)]"
+                  : "border-hairline bg-canvas"
+              }`}
+            >
+              <span
+                className={`block text-[14px] font-medium ${
+                  selected ? "text-ink" : "text-charcoal"
+                }`}
+              >
+                {m.label}
+              </span>
+              <span className="mt-0.5 block text-[12px] text-stone">
+                {m.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 목적지 선택 (직접 정하기 모드) */}
+      {destinationMode && (
+        <section className="card">
+          <h2 className="mb-1 text-[15px] font-semibold text-ink">
+            어디로 갈까
+          </h2>
+          <p className="mb-3 text-[13px] text-steel">
+            가기로 정한 곳의 일정을 짜드려요
+          </p>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            {(
+              [
+                [false, "국내"],
+                [true, "해외"],
+              ] as const
+            ).map(([overseas, label]) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  setIsOverseas(overseas);
+                  setDestination("");
+                  setCustomDestination("");
+                }}
+                aria-pressed={isOverseas === overseas}
+                className={`min-h-[44px] rounded-md border text-[14px] font-medium transition-colors ${
+                  isOverseas === overseas
+                    ? "border-primary bg-canvas text-ink shadow-[0_0_0_1px_var(--color-primary)]"
+                    : "border-hairline bg-canvas text-steel"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {destPresets.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setDestination(name)}
+                aria-pressed={destination === name}
+                className={`min-h-[44px] rounded-md border text-[14px] font-medium transition-colors ${
+                  destination === name
+                    ? "border-primary bg-canvas text-ink shadow-[0_0_0_1px_var(--color-primary)]"
+                    : "border-hairline bg-canvas text-steel"
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setDestination("__custom")}
+              aria-pressed={usingCustomDestination}
+              className={`min-h-[44px] rounded-md border text-[14px] font-medium transition-colors ${
+                usingCustomDestination
+                  ? "border-primary bg-canvas text-ink shadow-[0_0_0_1px_var(--color-primary)]"
+                  : "border-hairline bg-canvas text-steel"
+              }`}
+            >
+              직접 입력
+            </button>
+          </div>
+          {usingCustomDestination && (
+            <input
+              type="text"
+              value={customDestination}
+              onChange={(e) => setCustomDestination(e.target.value)}
+              placeholder={isOverseas ? "예: 삿포로, 나트랑" : "예: 통영, 남해"}
+              className="input mt-2"
+            />
+          )}
+        </section>
+      )}
       {/* 날짜 */}
       <section className="card">
         <div className="mb-4 flex items-baseline justify-between">
@@ -93,7 +231,8 @@ export default function TripConditionForm() {
         )}
       </section>
 
-      {/* 출발지 */}
+      {/* 출발지 (해외는 인천공항 출발로 고정) */}
+      {needsOrigin && (
       <section className="card">
         <h2 className="mb-1 text-[15px] font-semibold text-ink">어디서 출발할까</h2>
         <p className="mb-3 text-[13px] text-steel">
@@ -138,6 +277,7 @@ export default function TripConditionForm() {
           />
         )}
       </section>
+      )}
 
       {/* 여행 스타일 */}
       <section className="card">
@@ -232,16 +372,18 @@ export default function TripConditionForm() {
       )}
 
       <button type="submit" disabled={!ready} className="btn btn-primary w-full">
-        코스 추천받기
+        {destinationMode ? "일정 짜기" : "코스 추천받기"}
       </button>
       <p className="pb-2 text-center text-[12px] text-stone">
-        추천을 만드는 데 1~2분 정도 걸려요
+        {destinationMode
+          ? "일정을 만드는 데 1~2분 정도 걸려요"
+          : "추천을 만드는 데 1~2분 정도 걸려요"}
       </p>
     </form>
   );
 }
 
-function PlanningState() {
+function PlanningState({ destinationMode }: { destinationMode: boolean }) {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
       <div className="mb-6 flex gap-1.5">
@@ -253,10 +395,13 @@ function PlanningState() {
           />
         ))}
       </div>
-      <p className="text-[15px] font-medium text-ink">코스를 짜고 있어요</p>
+      <p className="text-[15px] font-medium text-ink">
+        {destinationMode ? "일정을 짜고 있어요" : "코스를 짜고 있어요"}
+      </p>
       <p className="mt-2 max-w-xs text-[13px] leading-relaxed text-steel">
-        이동시간을 따져보고, 조건에 맞는 지역을 고르고, 숙소와 맛집을 찾는
-        중입니다. 1~2분 정도 걸려요.
+        {destinationMode
+          ? "동선을 따져보고, 관광지와 맛집을 고르고, 여행 정보를 정리하는 중입니다. 1~2분 정도 걸려요."
+          : "이동시간을 따져보고, 조건에 맞는 지역을 고르고, 숙소와 맛집을 찾는 중입니다. 1~2분 정도 걸려요."}
       </p>
     </div>
   );

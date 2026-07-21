@@ -162,10 +162,13 @@ export default function HistoryView({ trips }: { trips: HistoryTrip[] }) {
                       다녀옴
                     </span>
                   )}
-                  <span className="flex items-center gap-1 text-[12px] text-stone">
-                    <CarIcon width={13} height={13} />
-                    편도 약 {formatDriveTime(entries[0].driveMinutes)}
-                  </span>
+                  {/* 해외는 자차 이동시간이 없어 0으로 저장됨 */}
+                  {entries[0].driveMinutes > 0 && (
+                    <span className="flex items-center gap-1 text-[12px] text-stone">
+                      <CarIcon width={13} height={13} />
+                      편도 약 {formatDriveTime(entries[0].driveMinutes)}
+                    </span>
+                  )}
                 </div>
                 <ul className="space-y-1">
                   {entries.map(({ trip, chosen }) => (

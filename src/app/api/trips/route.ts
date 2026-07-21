@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
-import { planTrip } from "@/lib/claude";
+import { planDestination, planTrip } from "@/lib/claude";
 import { searchPhotos, searchPlace, searchPlaces } from "@/lib/kakao";
 import {
   DEFAULT_ORIGIN,
@@ -64,8 +64,38 @@ export async function POST(request: Request) {
     );
   }
 
-  const originName: string = origin?.trim() || DEFAULT_ORIGIN.name;
+  const mode: string = body.mode === "destination" ? "destination" : "recommend";
+  const isOverseas = mode === "destination" && Boolean(body.isOverseas);
+  const destination: string = (body.destination ?? "").trim();
+
+  if (mode === "destination" && !destination) {
+    return NextResponse.json(
+      { error: "가고싶은 곳을 입력해주세요." },
+      { status: 400 },
+    );
+  }
+
+  // 해외는 인천공항에서 출발 (자차 이동 개념이 없음)
+  const originName: string = isOverseas
+    ? "인천공항"
+    : origin?.trim() || DEFAULT_ORIGIN.name;
   const allowedMinutes = maxOneWayMinutes(nights);
+
+  if (mode === "destination") {
+    return handleDestination({
+      userId: user.id,
+      destination,
+      isOverseas,
+      originName,
+      startDate,
+      endDate,
+      start,
+      end,
+      nights,
+      style,
+      wantsDessert: Boolean(wantsDessert),
+    });
+  }
 
   // 출발지 좌표 — 프리셋에 없으면 카카오로 검색
   const preset = ORIGIN_PRESETS.find((o) => o.name === originName);
@@ -131,30 +161,121 @@ export async function POST(request: Request) {
       },
     });
 
-    const keywords = option.places.map((p) => p.searchKeyword);
-    const [found, photos] = await Promise.all([
-      searchPlaces(keywords),
-      searchPhotos(keywords),
-    ]);
-
-    await prisma.place.createMany({
-      data: option.places.map((p, i) => {
-        const hit = found[i];
-        return {
-          optionId: created.id,
-          type: p.type,
-          name: p.name,
-          address: hit?.address ?? null,
-          lat: hit?.lat ?? null,
-          lng: hit?.lng ?? null,
-          kakaoPlaceUrl: hit?.placeUrl ?? null,
-          photoUrl: photos[i],
-          note: p.note,
-          priceLevel: p.priceLevel,
-        };
-      }),
-    });
+    await createPlaces(created.id, option.places, true);
   }
+
+  return NextResponse.json({ ok: true, tripId: trip.id });
+}
+
+/**
+ * 장소 정보 보강 후 저장.
+ * 해외는 카카오 로컬 검색이 안 되므로 좌표 없이 사진만 붙입니다
+ * (이미지 검색은 해외 장소도 나오는 경우가 많음).
+ */
+async function createPlaces(
+  optionId: string,
+  places: { type: string; name: string; searchKeyword: string; note: string; priceLevel: string }[],
+  searchLocal: boolean,
+) {
+  const keywords = places.map((p) => p.searchKeyword);
+  const [found, photos] = await Promise.all([
+    searchLocal ? searchPlaces(keywords) : Promise.resolve(keywords.map(() => null)),
+    searchPhotos(keywords),
+  ]);
+
+  await prisma.place.createMany({
+    data: places.map((p, i) => {
+      const hit = found[i];
+      return {
+        optionId,
+        type: p.type,
+        name: p.name,
+        address: hit?.address ?? null,
+        lat: hit?.lat ?? null,
+        lng: hit?.lng ?? null,
+        kakaoPlaceUrl: hit?.placeUrl ?? null,
+        photoUrl: photos[i],
+        note: p.note,
+        priceLevel: p.priceLevel,
+      };
+    }),
+  });
+}
+
+/** 목적지 직접 지정 모드: 정해진 곳의 일정 하나를 만들어 저장 */
+async function handleDestination(args: {
+  userId: string;
+  destination: string;
+  isOverseas: boolean;
+  originName: string;
+  startDate: string;
+  endDate: string;
+  start: Date;
+  end: Date;
+  nights: number;
+  style: string;
+  wantsDessert: boolean;
+}) {
+  let planned;
+  try {
+    planned = await planDestination({
+      destination: args.destination,
+      isOverseas: args.isOverseas,
+      origin: args.originName,
+      startDate: args.startDate,
+      endDate: args.endDate,
+      nights: args.nights,
+      style: args.style,
+      wantsDessert: args.wantsDessert,
+    });
+  } catch (e) {
+    console.error("목적지 일정 생성 실패", e);
+    const message =
+      e instanceof Error ? e.message : "일정을 만드는 중 문제가 생겼어요.";
+    return NextResponse.json({ error: message }, { status: 502 });
+  }
+
+  const trip = await prisma.trip.create({
+    data: {
+      createdById: args.userId,
+      startDate: args.start,
+      endDate: args.end,
+      nights: args.nights,
+      origin: args.originName,
+      style: args.style,
+      wantsDessert: args.wantsDessert,
+      mode: "destination",
+      isOverseas: args.isOverseas,
+      destination: args.destination,
+    },
+  });
+
+  // 국내면 출발지→목적지 이동시간 계산, 해외는 자차 개념이 없어 0
+  let estDriveMinutes = 0;
+  if (!args.isOverseas) {
+    const preset = ORIGIN_PRESETS.find((o) => o.name === args.originName);
+    const originCoord = preset
+      ? { lat: preset.lat, lng: preset.lng }
+      : ((await searchPlace(args.originName)) ?? DEFAULT_ORIGIN);
+    const regionPlace = await searchPlace(planned.searchKeyword);
+    if (regionPlace) {
+      estDriveMinutes = estimateDriveMinutes(originCoord, regionPlace);
+    }
+  }
+
+  const created = await prisma.tripOption.create({
+    data: {
+      tripId: trip.id,
+      regionName: planned.regionName,
+      summary: planned.summary,
+      stayAreaNote: planned.stayAreaNote,
+      estDriveMinutes,
+      itinerary: JSON.stringify(planned.itinerary ?? []),
+      overseasInfo: planned.overseas ? JSON.stringify(planned.overseas) : null,
+    },
+  });
+
+  await createPlaces(created.id, planned.places, !args.isOverseas);
 
   return NextResponse.json({ ok: true, tripId: trip.id });
 }

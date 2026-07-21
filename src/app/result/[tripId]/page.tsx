@@ -56,7 +56,9 @@ export default async function ResultPage({
 
         <div className="mb-5 px-1">
           <h1 className="text-[22px] font-semibold tracking-tight text-ink">
-            이 중에 골라볼까요
+            {trip.mode === "destination"
+              ? `${trip.destination} 이렇게 다녀올까요`
+              : "이 중에 골라볼까요"}
           </h1>
           <p className="mt-1.5 text-[13px] text-steel">
             {trip.origin} 출발 · {formatDate(trip.startDate)}–
@@ -67,6 +69,7 @@ export default async function ResultPage({
 
         <TripResult
           tripId={trip.id}
+          isOverseas={trip.isOverseas}
           options={trip.options.map((o) => ({
             id: o.id,
             regionName: o.regionName,
@@ -74,6 +77,7 @@ export default async function ResultPage({
             stayAreaNote: o.stayAreaNote,
             estDriveMinutes: o.estDriveMinutes,
             itinerary: o.itinerary,
+            overseasInfo: o.overseasInfo,
             isChosen: o.isChosen,
             plan: planByOption.get(o.id)
               ? {

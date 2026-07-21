@@ -4,7 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import KakaoMap from "./KakaoMap";
-import { PLACE_TYPES, type ItineraryDay } from "@/lib/types";
+import {
+  PLACE_TYPES,
+  type ItineraryDay,
+  type OverseasInfo,
+} from "@/lib/types";
 import { formatDriveTime } from "@/lib/distance";
 import { photoSrc } from "@/lib/photo";
 import {
@@ -37,6 +41,8 @@ export interface ResultOption {
   stayAreaNote: string | null;
   estDriveMinutes: number;
   itinerary: string | null;
+  /** 해외 여행 정보 (JSON 문자열, 해외 목적지 모드에서만) */
+  overseasInfo: string | null;
   isChosen: boolean;
   places: ResultPlace[];
   /** 이 후보로 이미 만든 여행 (저장/확정) */
@@ -67,12 +73,101 @@ function parseItinerary(raw: string | null): ItineraryDay[] {
   }
 }
 
+function parseOverseasInfo(raw: string | null): OverseasInfo | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as OverseasInfo;
+  } catch {
+    return null;
+  }
+}
+
+/** 물가 수준 뱃지 색 (비쌀수록 경고 톤) */
+const PRICE_LEVEL_TINT: Record<string, string> = {
+  저렴한편: "bg-tint-mint text-cat-activity",
+  보통: "bg-surface text-slate",
+  비싼편: "bg-tint-peach text-cat-food",
+};
+
+/** 해외 목적지일 때 뜨는 여행 정보 카드 */
+function OverseasInfoCard({ info }: { info: OverseasInfo }) {
+  const rows: { label: string; text: string; priceLevel?: string }[] = [
+    { label: "항공", text: info.flightNote },
+    {
+      label: "항공권",
+      text: info.flightPriceNote,
+      priceLevel: info.flightPriceLevel,
+    },
+    {
+      label: "숙소 물가",
+      text: info.stayPriceNote,
+      priceLevel: info.stayPriceLevel,
+    },
+    { label: "가는 법", text: info.gettingThere },
+    { label: "현지 교통", text: info.localTransport },
+    { label: "환전·결제", text: info.currencyNote },
+    { label: "시차", text: info.timeDiffNote },
+  ];
+
+  return (
+    <section>
+      <h3 className="mb-2.5 text-[13px] font-semibold text-charcoal">
+        여행 정보
+      </h3>
+      <dl className="space-y-2.5 rounded-md border border-hairline-soft bg-surface-soft p-4">
+        {rows
+          .filter((r) => r.text)
+          .map((r) => (
+            <div key={r.label} className="flex gap-3">
+              <dt className="w-[64px] shrink-0 text-[12px] font-medium text-stone">
+                {r.label}
+              </dt>
+              <dd className="min-w-0 flex-1 text-[13px] leading-relaxed text-slate">
+                {r.priceLevel && (
+                  <span
+                    className={`tag mr-1.5 align-[1px] ${
+                      PRICE_LEVEL_TINT[r.priceLevel] ?? "bg-surface text-slate"
+                    }`}
+                  >
+                    {r.priceLevel}
+                  </span>
+                )}
+                {r.text}
+              </dd>
+            </div>
+          ))}
+      </dl>
+
+      {info.tips.length > 0 && (
+        <div className="mt-3">
+          <h4 className="mb-2 text-[13px] font-semibold text-charcoal">
+            꿀팁
+          </h4>
+          <ul className="space-y-1.5">
+            {info.tips.map((tip, i) => (
+              <li
+                key={i}
+                className="flex gap-2 text-[13px] leading-relaxed text-slate"
+              >
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-primary" />
+                {tip}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function TripResult({
   tripId,
   options,
+  isOverseas = false,
 }: {
   tripId: string;
   options: ResultOption[];
+  isOverseas?: boolean;
 }) {
   const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(
@@ -124,6 +219,7 @@ export default function TripResult({
       {options.map((option) => {
         const open = openId === option.id;
         const itinerary = parseItinerary(option.itinerary);
+        const overseasInfo = parseOverseasInfo(option.overseasInfo);
 
         return (
           <article
@@ -149,10 +245,12 @@ export default function TripResult({
                     </span>
                   )}
                 </span>
-                <span className="mt-1.5 flex items-center gap-1.5 text-[12px] text-stone">
-                  <CarIcon width={14} height={14} />
-                  편도 약 {formatDriveTime(option.estDriveMinutes)}
-                </span>
+                {!isOverseas && (
+                  <span className="mt-1.5 flex items-center gap-1.5 text-[12px] text-stone">
+                    <CarIcon width={14} height={14} />
+                    편도 약 {formatDriveTime(option.estDriveMinutes)}
+                  </span>
+                )}
                 <span className="mt-2.5 block text-[13px] leading-relaxed text-slate">
                   {option.summary}
                 </span>
@@ -170,26 +268,30 @@ export default function TripResult({
 
             {open && (
               <div className="border-t border-hairline-soft">
-                {/* 지도 */}
-                <div className="h-[260px] w-full sm:h-[320px]">
-                  <KakaoMap
-                    places={option.places.map((p) => ({
-                      id: p.id,
-                      type: p.type,
-                      name: p.name,
-                      lat: p.lat,
-                      lng: p.lng,
-                      note: p.note,
-                      photoUrl: p.photoUrl,
-                      kakaoPlaceUrl: p.kakaoPlaceUrl,
-                      priceLevel: p.priceLevel,
-                    }))}
-                    focusedId={focusedPlaceId}
-                    onSelect={setFocusedPlaceId}
-                  />
-                </div>
+                {/* 지도 — 해외는 카카오맵이 커버하지 않아 표시하지 않음 */}
+                {!isOverseas && (
+                  <div className="h-[260px] w-full sm:h-[320px]">
+                    <KakaoMap
+                      places={option.places.map((p) => ({
+                        id: p.id,
+                        type: p.type,
+                        name: p.name,
+                        lat: p.lat,
+                        lng: p.lng,
+                        note: p.note,
+                        photoUrl: p.photoUrl,
+                        kakaoPlaceUrl: p.kakaoPlaceUrl,
+                        priceLevel: p.priceLevel,
+                      }))}
+                      focusedId={focusedPlaceId}
+                      onSelect={setFocusedPlaceId}
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-5 p-5">
+                  {overseasInfo && <OverseasInfoCard info={overseasInfo} />}
+
                   {option.stayAreaNote && (
                     <section>
                       <h3 className="mb-1.5 text-[13px] font-semibold text-charcoal">
