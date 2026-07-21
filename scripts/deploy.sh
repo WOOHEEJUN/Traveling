@@ -33,11 +33,13 @@ npx prisma migrate deploy 2>&1 | grep -E "migrations|already|No pending" | tail 
 
 echo "==> 4/5 프로덕션 빌드"
 # RAM이 950MB뿐이라 힙 상한을 둡니다 (스왑 2.3GB가 있어 버팀)
-if NODE_OPTIONS="--max-old-space-size=768" npm run build 2>&1 | tee /tmp/build.log | grep -q "Compiled successfully"; then
+# npm 실제 종료 코드로 판정합니다. (grep -q 로 파이프를 걸면 SIGPIPE +
+#  pipefail 때문에 빌드가 성공해도 실패로 오판되므로 쓰지 않습니다.)
+if NODE_OPTIONS="--max-old-space-size=768" npm run build >/tmp/build.log 2>&1; then
   echo "    빌드 성공"
 else
   echo "    !! 빌드 실패 — 서비스를 재시작하지 않습니다. 로그:"
-  tail -20 /tmp/build.log
+  tail -25 /tmp/build.log
   exit 1
 fi
 
