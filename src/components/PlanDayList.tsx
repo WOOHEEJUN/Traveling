@@ -31,6 +31,8 @@ export interface PlanDayData {
 
 interface Props {
   days: PlanDayData[];
+  /** 카카오 링크 없는 장소의 구글맵 검색어용 */
+  regionName: string;
   editing: boolean;
   focusedId: string | null;
   onFocus: (id: string) => void;
@@ -46,6 +48,7 @@ interface Props {
 
 export default function PlanDayList({
   days,
+  regionName,
   editing,
   focusedId,
   onFocus,
@@ -145,6 +148,7 @@ export default function PlanDayList({
                     <SortablePlanItem
                       key={item.id}
                       item={item}
+                      regionName={regionName}
                       editing={editing}
                       focused={focusedId === item.id}
                       onFocus={onFocus}

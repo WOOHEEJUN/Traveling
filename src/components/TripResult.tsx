@@ -10,6 +10,7 @@ import {
   type OverseasInfo,
 } from "@/lib/types";
 import { formatDriveTime } from "@/lib/distance";
+import { placeMapLink } from "@/lib/maps";
 import { photoSrc } from "@/lib/photo";
 import {
   BedIcon,
@@ -389,16 +390,22 @@ export default function TripResult({
                                     </p>
                                   )}
                                 </div>
-                                {place.kakaoPlaceUrl && (
-                                  <a
-                                    href={place.kakaoPlaceUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="shrink-0 rounded-md border border-hairline bg-canvas px-2.5 py-1.5 text-[12px] font-medium text-slate"
-                                  >
-                                    지도
-                                  </a>
-                                )}
+                                {(() => {
+                                  const link = placeMapLink(
+                                    place.kakaoPlaceUrl,
+                                    `${option.regionName} ${place.name}`,
+                                  );
+                                  return (
+                                    <a
+                                      href={link.href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="shrink-0 rounded-md border border-hairline bg-canvas px-2.5 py-1.5 text-[12px] font-medium text-slate"
+                                    >
+                                      {link.label}
+                                    </a>
+                                  );
+                                })()}
                               </div>
                             </li>
                           ))}

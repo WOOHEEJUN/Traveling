@@ -350,6 +350,7 @@ export default function PlanDetail({ plan }: { plan: PlanDetailData }) {
 
       <PlanDayList
         days={days}
+        regionName={plan.regionName}
         editing={editing}
         focusedId={focusedId}
         onFocus={setFocusedId}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PLACE_TYPES } from "@/lib/types";
+import { placeMapLink } from "@/lib/maps";
 import { photoSrc } from "@/lib/photo";
 import {
   BedIcon,
@@ -44,6 +45,8 @@ const TYPE_TINT: Record<string, string> = {
 
 interface Props {
   item: PlanItemData;
+  /** 구글맵 검색어에 지역명을 붙이기 위함 (해외 등 카카오 링크가 없을 때) */
+  regionName: string;
   editing: boolean;
   onFocus: (id: string) => void;
   onDelete: (id: string) => void;
@@ -53,6 +56,7 @@ interface Props {
 
 export default function SortablePlanItem({
   item,
+  regionName,
   editing,
   onFocus,
   onDelete,
@@ -145,16 +149,23 @@ export default function SortablePlanItem({
           )}
         </div>
 
-        {!editing && item.kakaoPlaceUrl && (
-          <a
-            href={item.kakaoPlaceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 rounded-md border border-hairline bg-canvas px-2.5 py-1.5 text-[12px] font-medium text-slate"
-          >
-            지도
-          </a>
-        )}
+        {!editing &&
+          (() => {
+            const link = placeMapLink(
+              item.kakaoPlaceUrl,
+              `${regionName} ${item.name}`,
+            );
+            return (
+              <a
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shrink-0 rounded-md border border-hairline bg-canvas px-2.5 py-1.5 text-[12px] font-medium text-slate"
+              >
+                {link.label}
+              </a>
+            );
+          })()}
       </div>
 
       {/* 편집 모드에서만 시간·메모 입력 */}
