@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Calendar from "./Calendar";
 import {
@@ -12,6 +12,11 @@ import {
 } from "@/lib/types";
 import { ORIGIN_PRESETS, nightsLabel } from "@/lib/distance";
 import { CakeIcon, CheckIcon } from "./icons";
+import EasterEggGame from "./easter-egg/EasterEggGame";
+
+/** 이 시간 안에 다시 누르면 "연속 클릭"으로 칩니다 */
+const EASTER_EGG_WINDOW_MS = 3000;
+const EASTER_EGG_TRIGGER_COUNT = 5;
 
 function nightsBetween(start: string, end: string): number {
   const ms = new Date(end).getTime() - new Date(start).getTime();
@@ -40,6 +45,26 @@ export default function TripConditionForm() {
   const [wantsDessert, setWantsDessert] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const dessertToggleClicks = useRef<number[]>([]);
+  const [showEasterEgg, setShowEasterEgg] = useState(false);
+
+  /** 디저트 스위치를 짧은 시간 안에 5번 누르면 숨겨진 미니게임이 뜹니다 */
+  function handleDessertToggle() {
+    setWantsDessert((v) => !v);
+    const now = Date.now();
+    const recent = [
+      ...dessertToggleClicks.current.filter(
+        (t) => now - t < EASTER_EGG_WINDOW_MS,
+      ),
+      now,
+    ];
+    if (recent.length >= EASTER_EGG_TRIGGER_COUNT) {
+      setShowEasterEgg(true);
+      dessertToggleClicks.current = [];
+    } else {
+      dessertToggleClicks.current = recent;
+    }
+  }
 
   const usingCustomOrigin = origin === "__custom";
   const resolvedOrigin = usingCustomOrigin ? customOrigin.trim() : origin;
@@ -101,6 +126,7 @@ export default function TripConditionForm() {
   const destPresets = isOverseas ? OVERSEAS_DEST_PRESETS : DOMESTIC_DEST_PRESETS;
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* 모드: 추천받기 vs 직접 정하기 */}
       <div className="grid grid-cols-2 gap-2">
@@ -330,7 +356,7 @@ export default function TripConditionForm() {
       <section className="card">
         <button
           type="button"
-          onClick={() => setWantsDessert((v) => !v)}
+          onClick={handleDessertToggle}
           aria-pressed={wantsDessert}
           className="flex w-full items-center gap-3 text-left"
         >
@@ -380,6 +406,10 @@ export default function TripConditionForm() {
           : "추천을 만드는 데 1~2분 정도 걸려요"}
       </p>
     </form>
+    {showEasterEgg && (
+      <EasterEggGame onClose={() => setShowEasterEgg(false)} />
+    )}
+    </>
   );
 }
 
